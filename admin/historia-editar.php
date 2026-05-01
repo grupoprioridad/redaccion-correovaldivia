@@ -47,6 +47,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'editar') {
+        @file_put_contents('/tmp/historia_editar_debug.log',
+            '['.date('Y-m-d H:i:s')."] POST id=$id\n".print_r($_POST, true)."\n",
+            FILE_APPEND);
         $tit = trim($_POST['titulo'] ?? '');
         $desc = trim($_POST['descripcion'] ?? '');
         $foco = trim($_POST['foco'] ?? '');

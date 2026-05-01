@@ -14,11 +14,14 @@ $categorias_disponibles = $db->query("SELECT id, nombre, descripcion FROM catego
 if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
     $modo = 'codigo_enviado';
     $email_verificando = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
+    if (!isset($_SESSION['csrf']) || empty($_SESSION['csrf'])) {
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar') {
         csrf_verify();
         $codigo = trim($_POST['codigo'] ?? '');
-        $email = $_SESSION['verificar_email'] ?? '';
+        $email = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
         
         if (empty($email)) {
             $error = 'Sesión expirada. Regístrate de nuevo.';

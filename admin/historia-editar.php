@@ -16,6 +16,12 @@ $historia = $db->prepare("
 $historia->execute([$id]);
 $h = $historia->fetch();
 
+$categorias = $db->query("SELECT id, nombre FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
+$periodistas = $db->query("SELECT id, nombre, email FROM usuarios WHERE rol='periodista' AND activo=1 AND aprobado=1 ORDER BY nombre")->fetchAll();
+$visStmt = $db->prepare("SELECT usuario_id FROM historia_visibilidad WHERE historia_id = ?");
+$visStmt->execute([$id]);
+$visibilidad_actual = array_map('intval', $visStmt->fetchAll(PDO::FETCH_COLUMN));
+
 if (!$h) {
     flash('error', 'Historia no encontrada.');
     header('Location: ' . BASE_URL . '/admin/index.php');
@@ -47,6 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ext = trim($_POST['extension'] ?? '');
         $fecha = $_POST['fecha_entrega'] ?? '';
         $presupuesto = (int)($_POST['presupuesto'] ?? 0);
+        $categoria_id = !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null;
+        $visible_todos = isset($_POST['visible_todos']) ? 1 : 0;
+        $periodistas_sel = $_POST['periodistas'] ?? [];
         $estadosValidos = ['disponible','asignada','en_curso','entregada','revisada','pagada'];
         $estado = $_POST['estado'] ?? $h['estado'];
         if (!in_array($estado, $estadosValidos, true)) $estado = $h['estado'];
@@ -55,8 +64,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Título y fecha son obligatorios.');
         } else {
             $monto_total_a_pagar = isset($_POST['monto_total_a_pagar']) && $_POST['monto_total_a_pagar'] !== '' ? (int)$_POST['monto_total_a_pagar'] : $presupuesto;
-            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, monto_total_a_pagar=?, estado=? WHERE id=?")
-                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $estado, $id]);
+            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, monto_total_a_pagar=?, estado=?, categoria_id=?, visible_para_todos=? WHERE id=?")
+                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $estado, $categoria_id, $visible_todos, $id]);
+
+            $db->prepare("DELETE FROM historia_visibilidad WHERE historia_id = ?")->execute([$id]);
+            if (!$visible_todos && !empty($periodistas_sel)) {
+                $stmt_vis = $db->prepare("INSERT INTO historia_visibilidad (historia_id, usuario_id) VALUES (?, ?)");
+                foreach ($periodistas_sel as $pid) {
+                    $stmt_vis->execute([$id, (int)$pid]);
+                }
+            }
+
             flash('success', 'Historia actualizada.');
         }
         header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
@@ -156,6 +174,42 @@ $pag = $pago->fetch();
                 <div class="hint">Monto que efectivamente se pagará al periodista.</div>
             </div>
         </div>
+        <div class="form-group">
+            <label for="edit_categoria">Categoría / Tema de interés</label>
+            <select id="edit_categoria" name="categoria_id">
+                <option value="">Sin categoría</option>
+                <?php foreach ($categorias as $cat): ?>
+                <option value="<?= $cat['id'] ?>" <?= (int)$h['categoria_id']===(int)$cat['id']?'selected':'' ?>><?= e($cat['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="hint">Los periodistas interesados en esta categoría recibirán prioridad en la notificación.</div>
+        </div>
+
+        <div class="form-group">
+            <label>Visibilidad</label>
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="edit_visible_todos" name="visible_todos" value="1" <?= !empty($h['visible_para_todos']) ? 'checked' : '' ?> onchange="toggleEditPeriodistas(this)">
+                    <span class="label">Visible para todos los periodistas</span>
+                </label>
+            </div>
+            <div id="edit-periodistas-select" style="<?= !empty($h['visible_para_todos']) ? 'display:none' : '' ?>">
+                <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Selecciona los periodistas que pueden ver esta historia:</p>
+                <?php foreach ($periodistas as $p): ?>
+                <label class="checkbox-item">
+                    <input type="checkbox" name="periodistas[]" value="<?= $p['id'] ?>" <?= in_array((int)$p['id'], $visibilidad_actual, true) ? 'checked' : '' ?>>
+                    <span class="label"><?= e($p['nombre']) ?> · <?= e($p['email']) ?></span>
+                </label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <script>
+        function toggleEditPeriodistas(checkbox) {
+            document.getElementById('edit-periodistas-select').style.display = checkbox.checked ? 'none' : 'block';
+        }
+        </script>
+
         <div class="form-group">
             <label for="edit_estado">Estado</label>
             <select id="edit_estado" name="estado">

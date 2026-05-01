@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare("UPDATE entregas SET estado=?, notas_revision=?, revisado_por=? WHERE historia_id=? AND estado='pendiente_revision'")->execute([$estado, $notas, $_SESSION['usuario_id'], $id]);
             $db->prepare("UPDATE historias SET estado=? WHERE id=?")->execute([$nuevo_estado, $id]);
             flash('success', 'Historia ' . ($estado === 'aprobado' ? 'aprobada' : 'rechazada') . '.');
-            header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
+            header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
             exit;
         }
     }
@@ -98,14 +98,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             flash('success', 'Historia actualizada.');
         }
-        header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
+        header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
         exit;
     }
 
     if ($action === 'marcar_pagado') {
         if ($h['estado'] !== 'revisada' || !$h['periodista_asignado']) {
             flash('error', 'La historia no está en estado para pagar.');
-            header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
+            header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
             exit;
         }
         $monto_total = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->execute([$id, $h['periodista_asignado'], $monto_total, $honorarios, $retencion, $liquido]);
         $db->prepare("UPDATE historias SET estado='pagada' WHERE id=?")->execute([$id]);
         flash('success', 'Pago registrado.');
-        header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
+        header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
         exit;
     }
 }
@@ -158,7 +158,7 @@ $pag = $pago->fetch();
 <!-- Edit Form (hidden by default) -->
 <div id="edit-form-card" class="card" style="margin-bottom:1.2rem;display:none;border-color:var(--accent)">
     <div class="card-header"><h2>✏️ Editar Historia</h2></div>
-    <form method="post" style="max-width:600px">
+    <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>" style="max-width:600px">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="editar">
         
@@ -359,7 +359,7 @@ function toggleEdit() {
         <?php elseif ($h['estado'] === 'revisada' && $h['periodista_asignado']): ?>
         <div class="card">
             <div class="card-header"><h2>💰 Registrar Pago</h2></div>
-            <form method="post">
+            <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="marcar_pagado">
                 <div class="form-group">
@@ -382,7 +382,7 @@ function toggleEdit() {
                 <h2>📄 Revisar Entrega</h2>
                 <span class="badge badge-pendiente_revision">Pendiente</span>
             </div>
-            <form method="post">
+            <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="revisar">
                 <div style="margin-bottom:.8rem">

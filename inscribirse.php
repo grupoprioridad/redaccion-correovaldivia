@@ -67,7 +67,7 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
     csrf_verify();
 
     $ip = clientIp();
-    if (!rateLimitOk('inscribir:' . $ip, 5, 3600)) {
+    if (!rateLimitOk('inscribir:' . $ip, 10, 3600)) {
         $errores[] = 'Demasiadas inscripciones desde tu conexión. Intenta más tarde.';
         $error_msg = implode('<br>', array_map('e', $errores));
         goto fin_form;
@@ -98,7 +98,7 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
     if (!$acepto_terminos) $errores[] = 'Debes aceptar las condiciones de funcionamiento, cesión de derechos y penalizaciones.';
 
     if (empty($errores)) {
-        rateLimitRecord('inscribir:' . $ip, 5, 3600);
+        rateLimitRecord('inscribir:' . $ip, 10, 3600);
         $db = getDB();
         $hash = password_hash($password, PASSWORD_DEFAULT);
 

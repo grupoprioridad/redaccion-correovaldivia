@@ -70,6 +70,7 @@ $historias = $db->query("
                         <th>Estado</th>
                         <th>Periodista</th>
                         <th>Presupuesto</th>
+                        <th>A Pagar</th>
                         <th>Entrega</th>
                         <th>Acciones</th>
                     </tr>
@@ -82,6 +83,7 @@ $historias = $db->query("
                         <td><span class="badge badge-<?= $h['estado'] ?>"><?= str_replace('_', ' ', $h['estado']) ?></span></td>
                         <td><?= e($h['periodista_nombre'] ?? '—') ?></td>
                         <td>$<?= number_format($h['presupuesto'], 0, ',', '.') ?></td>
+                        <td style="font-weight:600;color:var(--success)">$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?></td>
                         <td><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></td>
                         <td>
                             <a href="<?= BASE_URL ?>/admin/historia-editar.php?id=<?= $h['id'] ?>" class="btn btn-secondary btn-xs">Ver</a>

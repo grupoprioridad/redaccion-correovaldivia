@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ext = trim($_POST['extension'] ?? '');
     $fecha = $_POST['fecha_entrega'] ?? '';
     $presupuesto = (int)($_POST['presupuesto'] ?? 0);
+    $monto_total_a_pagar = isset($_POST['monto_total_a_pagar']) && $_POST['monto_total_a_pagar'] !== '' ? (int)$_POST['monto_total_a_pagar'] : $presupuesto;
     $categoria_id = !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null;
     $visible_todos = isset($_POST['visible_todos']) ? 1 : 0;
     $periodistas_sel = $_POST['periodistas'] ?? [];
@@ -21,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($tit) || empty($fecha)) {
         flash('error', 'El título y la fecha de entrega son obligatorios.');
     } else {
-        $stmt = $db->prepare("INSERT INTO historias (categoria_id, titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, visible_para_todos, creada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$categoria_id, $tit, $desc, $foco, $ext, $fecha, $presupuesto, $visible_todos, $_SESSION['usuario_id']]);
+        $stmt = $db->prepare("INSERT INTO historias (categoria_id, titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, monto_total_a_pagar, visible_para_todos, creada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$categoria_id, $tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $visible_todos, $_SESSION['usuario_id']]);
         $historia_id = $db->lastInsertId();
         
         // Si no es visible para todos, guardar visibilidad selectiva
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $titSafe        = e($tit);
         $descSafe       = nl2br(e(mb_substr($desc, 0, 200)));
         $extSafe        = e($ext);
-        $presupuestoSafe = (int)$presupuesto;
+        $presupuestoSafe = (int)($monto_total_a_pagar ?? $presupuesto);
         $fechaSafe      = date('d/m/Y', strtotime($fecha));
 
         foreach ($destinatarios as $dest) {
@@ -114,6 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label for="fecha_entrega">Fecha de entrega *</label>
                 <input type="date" id="fecha_entrega" name="fecha_entrega" required value="<?= e($_POST['fecha_entrega'] ?? '') ?>">
             </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="monto_total_a_pagar">Monto total a pagar ($)</label>
+            <input type="number" id="monto_total_a_pagar" name="monto_total_a_pagar" min="0" placeholder="Igual al presupuesto si se deja vacío" value="">
+            <div class="hint">Dejar vacío para usar el mismo valor del presupuesto.</div>
         </div>
         
         <div class="form-group">

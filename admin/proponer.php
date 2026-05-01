@@ -150,7 +150,7 @@ PROMPT;
         if ($idx >= 0 && $idx < count($propuestas)) {
             $p = $propuestas[$idx];
             // Crear historia directamente
-            $stmt = $db->prepare("INSERT INTO historias (titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, visible_para_todos, creada_por, estado) VALUES (?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL 14 DAY), 0, 1, ?, 'disponible')");
+            $stmt = $db->prepare("INSERT INTO historias (titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, monto_total_a_pagar, visible_para_todos, creada_por, estado) VALUES (?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL 14 DAY), 0, 0, 1, ?, 'disponible')");
             $stmt->execute([
                 mb_substr($p['titulo'] ?? 'Sin título', 0, 300),
                 '',

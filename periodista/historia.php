@@ -106,7 +106,7 @@ $pag = $pago->fetch();
         <div class="card-header"><h2>💰 Información</h2></div>
         <div class="detail-row">
             <span class="detail-label">Presupuesto</span>
-            <span class="detail-value" style="font-weight:600">$<?= number_format($h['presupuesto'], 0, ',', '.') ?></span>
+            <span class="detail-value" style="font-weight:600">$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?></span>
         </div>
         <div class="detail-row">
             <span class="detail-label">Fecha entrega</span>

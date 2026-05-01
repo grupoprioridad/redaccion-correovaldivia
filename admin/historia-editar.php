@@ -54,8 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($tit) || empty($fecha)) {
             flash('error', 'Título y fecha son obligatorios.');
         } else {
-            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, estado=? WHERE id=?")
-                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $estado, $id]);
+            $monto_total_a_pagar = isset($_POST['monto_total_a_pagar']) && $_POST['monto_total_a_pagar'] !== '' ? (int)$_POST['monto_total_a_pagar'] : $presupuesto;
+            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, monto_total_a_pagar=?, estado=? WHERE id=?")
+                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $estado, $id]);
             flash('success', 'Historia actualizada.');
         }
         header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
             exit;
         }
-        $monto_total = (int)$h['presupuesto'];
+        $monto_total = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
         $retencion = max(0, min($monto_total, (int)($_POST['retencion'] ?? 0)));
         $honorarios = $monto_total - $retencion;
         $liquido = $honorarios;
@@ -111,8 +112,77 @@ $pag = $pago->fetch();
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <a href="<?= BASE_URL ?>/admin/index.php" class="btn btn-secondary btn-sm">← Volver</a>
+        <button onclick="toggleEdit()" class="btn btn-primary btn-sm">✏️ Editar Historia</button>
     </div>
 </div>
+
+<!-- Edit Form (hidden by default) -->
+<div id="edit-form-card" class="card" style="margin-bottom:1.2rem;display:none;border-color:var(--accent)">
+    <div class="card-header"><h2>✏️ Editar Historia</h2></div>
+    <form method="post" style="max-width:600px">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="editar">
+        
+        <div class="form-group">
+            <label for="edit_titulo">Título</label>
+            <input type="text" id="edit_titulo" name="titulo" required value="<?= e($h['titulo']) ?>">
+        </div>
+        <div class="form-group">
+            <label for="edit_descripcion">Descripción</label>
+            <textarea id="edit_descripcion" name="descripcion" rows="3"><?= e($h['descripcion'] ?? '') ?></textarea>
+        </div>
+        <div class="form-group">
+            <label for="edit_foco">Foco periodístico</label>
+            <textarea id="edit_foco" name="foco" rows="3"><?= e($h['foco_periodistico'] ?? '') ?></textarea>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="edit_extension">Extensión esperada</label>
+                <input type="text" id="edit_extension" name="extension" value="<?= e($h['extension_esperada'] ?? '') ?>">
+            </div>
+            <div class="form-group">
+                <label for="edit_fecha">Fecha de entrega</label>
+                <input type="date" id="edit_fecha" name="fecha_entrega" required value="<?= e($h['fecha_entrega']) ?>">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="edit_presupuesto">Presupuesto estimado ($)</label>
+                <input type="number" id="edit_presupuesto" name="presupuesto" min="0" value="<?= (int)$h['presupuesto'] ?>">
+            </div>
+            <div class="form-group">
+                <label for="edit_monto_total_a_pagar">Monto total a pagar ($)</label>
+                <input type="number" id="edit_monto_total_a_pagar" name="monto_total_a_pagar" min="0" value="<?= (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']) ?>">
+                <div class="hint">Monto que efectivamente se pagará al periodista.</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="edit_estado">Estado</label>
+            <select id="edit_estado" name="estado">
+                <option value="disponible" <?= $h['estado']==='disponible'?'selected':'' ?>>Disponible</option>
+                <option value="asignada" <?= $h['estado']==='asignada'?'selected':'' ?>>Asignada</option>
+                <option value="en_curso" <?= $h['estado']==='en_curso'?'selected':'' ?>>En curso</option>
+                <option value="entregada" <?= $h['estado']==='entregada'?'selected':'' ?>>Entregada</option>
+                <option value="revisada" <?= $h['estado']==='revisada'?'selected':'' ?>>Revisada</option>
+                <option value="pagada" <?= $h['estado']==='pagada'?'selected':'' ?>>Pagada</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:.5rem">
+            <button type="submit" class="btn btn-primary">💾 Guardar Cambios</button>
+            <button type="button" class="btn btn-secondary" onclick="toggleEdit()">Cancelar</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function toggleEdit() {
+    var el = document.getElementById('edit-form-card');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el.style.display === 'block') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+</script>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
     <div class="card">
@@ -138,8 +208,12 @@ $pag = $pago->fetch();
             <span class="detail-value"><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
         </div>
         <div class="detail-row">
-            <span class="detail-label">Presupuesto</span>
+            <span class="detail-label">Presupuesto estimado</span>
             <span class="detail-value">$<?= number_format($h['presupuesto'], 0, ',', '.') ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Monto total a pagar</span>
+            <span class="detail-value" style="font-weight:600;color:var(--success)">$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?></span>
         </div>
         <div class="detail-row">
             <span class="detail-label">Periodista</span>
@@ -186,7 +260,7 @@ $pag = $pago->fetch();
                 <input type="hidden" name="action" value="marcar_pagado">
                 <div class="form-group">
                     <label>Monto total</label>
-                    <input type="text" value="$<?= number_format($h['presupuesto'], 0, ',', '.') ?>" disabled>
+                    <input type="text" value="$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?>" disabled>
                 </div>
                 <div class="form-group">
                     <label for="retencion">Retención ($)</label>

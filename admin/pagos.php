@@ -26,7 +26,7 @@ $resumen = $db->query("
 
 // Historias pendientes de pago (revisadas pero no pagadas)
 $pendientes = $db->query("
-    SELECT h.id, h.titulo, h.presupuesto, u.nombre AS periodista_nombre, h.updated_at
+    SELECT h.id, h.titulo, h.presupuesto, h.monto_total_a_pagar, u.nombre AS periodista_nombre, h.updated_at
     FROM historias h
     JOIN usuarios u ON h.periodista_asignado = u.id
     WHERE h.estado = 'revisada'
@@ -72,7 +72,7 @@ $ultimos_pagos = $db->query("
                 <tr>
                     <td><?= e($p['titulo']) ?></td>
                     <td><?= e($p['periodista_nombre']) ?></td>
-                    <td><strong>$<?= number_format($p['presupuesto'], 0, ',', '.') ?></strong></td>
+                    <td><strong>$<?= number_format($p['monto_total_a_pagar'] ?? $p['presupuesto'], 0, ',', '.') ?></strong></td>
                     <td>
                         <a href="<?= BASE_URL ?>/admin/historia-editar.php?id=<?= $p['id'] ?>" class="btn btn-success btn-xs">Pagar</a>
                     </td>

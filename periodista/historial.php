@@ -49,7 +49,7 @@ $rows = $historias->fetchAll();
                     <tr>
                         <th>Título</th>
                         <th>Estado</th>
-                        <th>Presupuesto</th>
+                        <th>A Pagar</th>
                         <th>Entrega</th>
                         <th>Entregado</th>
                         <th>Acción</th>
@@ -60,7 +60,7 @@ $rows = $historias->fetchAll();
                     <tr>
                         <td><strong><?= e($h['titulo']) ?></strong></td>
                         <td><span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span></td>
-                        <td>$<?= number_format($h['presupuesto'], 0, ',', '.') ?></td>
+                        <td>$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?></td>
                         <td><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></td>
                         <td><?= $h['entrega_fecha'] ? date('d/m/Y', strtotime($h['entrega_fecha'])) : '—' ?></td>
                         <td>

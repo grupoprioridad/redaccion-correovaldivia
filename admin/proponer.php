@@ -65,20 +65,7 @@ Responde SOLO con un JSON válido en este formato exacto:
 No incluyas nada más que el JSON.
 PROMPT;
 
-        $api_key_file = ROOT_PATH . '/scripts/.env';
-        $api_key = '';
-        if (file_exists($api_key_file)) {
-            $lines = file($api_key_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (str_starts_with($line, 'GROQ_API_KEY=')) {
-                    $api_key = substr($line, strlen('GROQ_API_KEY='));
-                    break;
-                }
-            }
-        }
-        if (empty($api_key)) {
-            $api_key = getenv('GROQ_API_KEY') ?: '';
-        }
+        $api_key = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
         $url_api = 'https://api.groq.com/openai/v1/chat/completions';
 
         $payload = json_encode([

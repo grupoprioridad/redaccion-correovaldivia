@@ -19,15 +19,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Ingresa tu email y contraseña.';
     } else {
         $usuario = autenticar($email, $password);
-        if ($usuario) {
+        if ($usuario === 'no_aprobado') {
+            $error = 'Tu cuenta está pendiente de aprobación por el administrador. Te avisaremos cuando esté activa.';
+        } elseif ($usuario) {
             if ($usuario['rol'] === 'admin') {
                 header('Location: ' . BASE_URL . '/admin/index.php');
             } else {
                 header('Location: ' . BASE_URL . '/periodista/index.php');
             }
             exit;
+        } else {
+            $error = 'Email o contraseña incorrectos.';
         }
-        $error = 'Email o contraseña incorrectos.';
     }
 }
 ?><!DOCTYPE html>
@@ -65,6 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Ingresar
         </button>
     </form>
+    <p style="text-align:center;margin-top:1.5rem;font-size:.8rem;color:var(--muted)">
+        ¿Eres periodista y quieres trabajar con nosotros?<br>
+        <a href="<?= BASE_URL ?>/inscribirse.php" style="color:var(--accent);font-weight:500">Inscríbete aquí →</a>
+    </p>
 </div>
 </body>
 </html>

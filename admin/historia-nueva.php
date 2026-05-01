@@ -3,7 +3,7 @@ $titulo = 'Nueva Historia';
 require_once __DIR__ . '/header.php';
 
 $db = getDB();
-$periodistas = $db->query("SELECT id, nombre, email FROM usuarios WHERE rol='periodista' AND activo=1 ORDER BY nombre")->fetchAll();
+$periodistas = $db->query("SELECT id, nombre, email FROM usuarios WHERE rol='periodista' AND activo=1 AND aprobado=1 ORDER BY nombre")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tit = trim($_POST['titulo'] ?? '');
@@ -30,7 +30,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        flash('success', 'Historia creada exitosamente.');
+        // Notificar a los periodistas sobre la nueva historia
+        $admin_nombre = $_SESSION['usuario_nombre'];
+        if ($visible_todos) {
+            $destinatarios = $db->query("SELECT email, nombre FROM usuarios WHERE rol='periodista' AND activo=1 AND aprobado=1")->fetchAll();
+        } else {
+            $ids = array_map('intval', $periodistas_sel);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $destinatarios = $db->prepare("SELECT email, nombre FROM usuarios WHERE id IN ($placeholders) AND activo=1 AND aprobado=1");
+            $destinatarios->execute($ids);
+            $destinatarios = $destinatarios->fetchAll();
+        }
+        
+        $subject = "📢 Nueva historia disponible: {$tit}";
+        foreach ($destinatarios as $dest) {
+            $msg = "
+            <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
+                <h2 style='color:#5e6ad2;margin-bottom:1rem'>📢 Nueva historia disponible</h2>
+                <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$dest['nombre']}</strong>,</p>
+                <p style='color:#a0a4ab;line-height:1.6'>Se ha publicado una nueva historia en la plataforma de redacción de El Correo de Valdivia.</p>
+                <div style='background:#191a1c;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:1.2rem;margin:1rem 0'>
+                    <h3 style='color:#f7f8f8;font-size:1.05rem;margin-bottom:.5rem'>{$tit}</h3>
+                    <p style='color:#a0a4ab;font-size:.85rem;line-height:1.5'>" . nl2br(e(mb_substr($desc, 0, 200))) . "</p>
+                    <div style='display:flex;gap:1rem;margin-top:.8rem;font-size:.8rem;color:#62666d'>
+                        <span>⏱ Entrega: " . date('d/m/Y', strtotime($fecha)) . "</span>
+                        <span>💰 \${$presupuesto}</span>
+                        <span>📄 {$ext}</span>
+                    </div>
+                </div>
+                <p style='margin:1.5rem 0'><a href='" . BASE_URL . "/periodista/index.php' style='display:inline-block;padding:12px 24px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px;font-size:.95rem'>Ver historias disponibles →</a></p>
+                <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
+                <p style='font-size:.8rem;color:#62666d'>El Correo de Valdivia · Sistema de Redacción</p>
+            </div>";
+            enviarCorreo($dest['email'], $subject, $msg);
+        }
+        
+        flash('success', 'Historia creada exitosamente. Se notificó a ' . count($destinatarios) . ' periodista(s) por email.');
         header('Location: ' . BASE_URL . '/admin/index.php');
         exit;
     }

@@ -55,6 +55,11 @@ function autenticar($email, $password) {
         return false;
     }
     
+    // Periodistas no aprobados no pueden ingresar
+    if ($usuario['rol'] === 'periodista' && !$usuario['aprobado']) {
+        return 'no_aprobado';
+    }
+    
     $_SESSION['usuario_id'] = $usuario['id'];
     $_SESSION['usuario'] = $usuario;
     $_SESSION['usuario_rol'] = $usuario['rol'];

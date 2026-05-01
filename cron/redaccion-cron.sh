@@ -2,7 +2,7 @@
 # Cron unificado de Redacción · El Correo de Valdivia
 set -e
 LOG="/var/log/redaccion-cron.log"
-BASE="/var/www/redaccion.elcorreodevaldivia"
+BASE="/var/www/redaccion-correovaldivia"
 HORA=$(date +%H)
 FECHA=$(date '+%Y-%m-%d %H:%M')
 

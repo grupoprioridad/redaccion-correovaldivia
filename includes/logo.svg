@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 60" fill="none">
+  <!-- Envelope icon mark -->
+  <g transform="translate(0,6)">
+    <rect x="2" y="8" width="44" height="32" rx="3" stroke="currentColor" stroke-width="2.2" fill="none"/>
+    <path d="M4 10 L24 28 L44 10" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="4" y1="38" x2="16" y2="26" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+    <line x1="44" y1="38" x2="32" y2="26" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  </g>
+  <!-- Text -->
+  <text x="56" y="24" font-family="Geist,Inter,system-ui,sans-serif" font-size="19" font-weight="600" fill="currentColor" letter-spacing="-1">El Correo</text>
+  <text x="56" y="46" font-family="Geist,Inter,system-ui,sans-serif" font-size="19" font-weight="300" fill="currentColor" letter-spacing="-0.5" opacity="0.7">de Valdivia</text>
+</svg>

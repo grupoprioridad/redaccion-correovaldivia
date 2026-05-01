@@ -1,0 +1,151 @@
+<?php
+$titulo = 'Detalle Historia';
+require_once __DIR__ . '/header.php';
+
+$db = getDB();
+$id = (int)($_GET['id'] ?? 0);
+$user_id = $_SESSION['usuario_id'];
+
+$historia = $db->prepare("SELECT h.*, u.nombre AS creador_nombre FROM historias h JOIN usuarios u ON h.creada_por = u.id WHERE h.id = ? AND h.periodista_asignado = ?");
+$historia->execute([$id, $user_id]);
+$h = $historia->fetch();
+
+if (!$h) {
+    flash('error', 'Historia no encontrada.');
+    header('Location: ' . BASE_URL . '/periodista/index.php');
+    exit;
+}
+
+// Calcular progreso del plazo
+$dias_total = 0;
+$dias_restantes = 0;
+$porcentaje = 0;
+if ($h['asignada_en']) {
+    $inicio = new DateTime($h['asignada_en']);
+    $entrega = new DateTime($h['fecha_entrega']);
+    $ahora = new DateTime();
+    $dias_total = max(1, $inicio->diff($entrega)->days);
+    $dias_transcurridos = max(0, $inicio->diff($ahora)->days);
+    $dias_restantes = max(0, $dias_total - $dias_transcurridos);
+    $porcentaje = min(100, round(($dias_transcurridos / $dias_total) * 100));
+}
+
+// Obtener entrega
+$entrega = $db->prepare("SELECT * FROM entregas WHERE historia_id = ? AND periodista_id = ? ORDER BY created_at DESC LIMIT 1");
+$entrega->execute([$id, $user_id]);
+$ent = $entrega->fetch();
+
+// Documento cesión
+$doc = null;
+if ($ent) {
+    $docStmt = $db->prepare("SELECT * FROM documentos_cesion WHERE entrega_id = ?");
+    $docStmt->execute([$ent['id']]);
+    $doc = $docStmt->fetch();
+}
+
+// Pago
+$pago = $db->prepare("SELECT * FROM pagos WHERE historia_id = ? AND periodista_id = ? LIMIT 1");
+$pago->execute([$id, $user_id]);
+$pag = $pago->fetch();
+?>
+
+<div class="page-header">
+    <div>
+        <h1><?= e($h['titulo']) ?></h1>
+        <div class="subtitle">
+            <span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span>
+            · Creada por <?= e($h['creador_nombre']) ?>
+        </div>
+    </div>
+    <div style="display:flex;gap:.5rem">
+        <a href="<?= BASE_URL ?>/periodista/index.php" class="btn btn-secondary btn-sm">← Volver</a>
+        <?php if (in_array($h['estado'], ['asignada','en_curso'])): ?>
+        <a href="<?= BASE_URL ?>/periodista/entregar.php?id=<?= $id ?>" class="btn btn-primary btn-sm">📝 Entregar</a>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php if ($h['asignada_en'] && $h['estado'] !== 'pagada'): ?>
+<div class="card" style="margin-bottom:1.2rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <span style="font-size:.8rem;color:var(--muted)">Progreso del plazo</span>
+        <span style="font-size:.8rem;color:var(--text2)"><?= $dias_restantes ?> días restantes</span>
+    </div>
+    <div style="height:6px;background:var(--surface2);border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:<?= $porcentaje ?>%;background:<?= $porcentaje > 80 ? 'var(--error)' : ($porcentaje > 50 ? 'var(--warning)' : 'var(--accent)') ?>;border-radius:99px;transition:width .5s"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:.3rem">
+        <span>Inicio: <?= date('d/m/Y', strtotime($h['asignada_en'])) ?></span>
+        <span>Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
+    </div>
+</div>
+<?php endif; ?>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+    <div class="card">
+        <div class="card-header"><h2>📋 Detalles</h2></div>
+        <div class="detail-row">
+            <span class="detail-label">Descripción</span>
+            <span class="detail-value"><?= nl2br(e($h['descripcion'] ?? '—')) ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Foco periodístico</span>
+            <span class="detail-value"><?= nl2br(e($h['foco_periodistico'] ?? '—')) ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Extensión</span>
+            <span class="detail-value"><?= e($h['extension_esperada'] ?? '—') ?></span>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header"><h2>💰 Información</h2></div>
+        <div class="detail-row">
+            <span class="detail-label">Presupuesto</span>
+            <span class="detail-value" style="font-weight:600">$<?= number_format($h['presupuesto'], 0, ',', '.') ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Fecha entrega</span>
+            <span class="detail-value"><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Estado</span>
+            <span class="detail-value"><span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span></span>
+        </div>
+        <?php if ($pag): ?>
+        <div class="detail-row">
+            <span class="detail-label">💵 Pago</span>
+            <span class="detail-value" style="color:var(--success)">
+                $<?= number_format($pag['liquido'], 0, ',', '.') ?> líquido · 
+                <?= date('d/m/Y', strtotime($pag['fecha_pago'])) ?>
+            </span>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php if ($ent && $ent['contenido']): ?>
+<div class="card" style="margin-top:1.2rem">
+    <div class="card-header">
+        <h2>📖 Mi Entrega</h2>
+        <span class="badge badge-<?= $ent['estado'] ?>"><?= $ent['estado'] ?></span>
+    </div>
+    <div style="line-height:1.8;font-size:.95rem;color:var(--text2)">
+        <?= $ent['contenido'] ?>
+    </div>
+    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted)">
+        Entregado el <?= date('d/m/Y H:i', strtotime($ent['fecha_entrega'])) ?>
+        <?php if ($doc && $doc['firma_aceptacion']): ?>
+        · ✅ Cesión de derechos firmada
+        <?php endif; ?>
+    </div>
+    <?php if ($ent['notas_revision']): ?>
+    <div style="margin-top:1rem;padding:1rem;background:var(--surface2);border-radius:10px;font-size:.85rem">
+        <strong style="color:var(--accent)">Notas de revisión:</strong><br>
+        <?= nl2br(e($ent['notas_revision'])) ?>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php require_once __DIR__ . '/footer.php'; ?>

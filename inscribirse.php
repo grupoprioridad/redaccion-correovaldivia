@@ -4,27 +4,70 @@ securityHeaders();
 
 $error = '';
 $success = '';
-$enviado = false;
+$modo = 'formulario'; // formulario, codigo_enviado, verificado
+$email_verificando = '';
 
-function interesesParaEmail($ids) {
-    if (empty($ids)) return 'No seleccionó intereses';
-    $db = getDB();
-    $ids_int = array_map('intval', $ids);
-    $placeholders = implode(',', array_fill(0, count($ids_int), '?'));
-    $cats = $db->prepare("SELECT nombre FROM categorias_redaccion WHERE id IN ($placeholders)");
-    $cats->execute($ids_int);
-    $nombres = $cats->fetchAll(PDO::FETCH_COLUMN);
-    return implode(', ', $nombres);
+// ── Paso 2: Verificar código ──
+if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
+    $modo = 'codigo_enviado';
+    $email_verificando = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
+    
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar') {
+        csrf_verify();
+        $codigo = trim($_POST['codigo'] ?? '');
+        $email = $_SESSION['verificar_email'] ?? '';
+        
+        if (empty($email)) {
+            $error = 'Sesión expirada. Regístrate de nuevo.';
+            $modo = 'formulario';
+        } elseif (empty($codigo)) {
+            $error = 'Ingresa el código de verificación.';
+        } else {
+            $db = getDB();
+            $stmt = $db->prepare("SELECT * FROM codigos_verificacion WHERE email = ? AND codigo = ? AND usado = 0 AND expira_en > NOW() ORDER BY created_at DESC LIMIT 1");
+            $stmt->execute([$email, $codigo]);
+            $row = $stmt->fetch();
+            
+            if ($row) {
+                // Marcar código como usado
+                $db->prepare("UPDATE codigos_verificacion SET usado = 1 WHERE id = ?")->execute([$row['id']]);
+                // Marcar email como verificado
+                $db->prepare("UPDATE usuarios SET email_verificado = 1 WHERE email = ? AND email_verificado = 0")->execute([$email]);
+                
+                $_SESSION['verificar_email'] = '';
+                $modo = 'verificado';
+                $success = '✅ Email verificado correctamente. Ahora el administrador revisará tu solicitud.';
+            } else {
+                $error = 'Código inválido o expirado. Solicita uno nuevo.';
+            }
+        }
+    }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// ── Paso 3: Reenviar código ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reenviar') {
+    csrf_verify();
+    $email = $_SESSION['verificar_email'] ?? '';
+    if (!empty($email)) {
+        $codigo = generarCodigo();
+        $db = getDB();
+        $db->prepare("INSERT INTO codigos_verificacion (email, codigo, expira_en) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE))")->execute([$email, $codigo]);
+        enviarCodigoVerificacion($email, $codigo);
+        flash('info', 'Nuevo código enviado a tu email.');
+    }
+    header('Location: ' . BASE_URL . '/inscribirse.php?codigo=1&email=' . urlencode($email));
+    exit;
+}
+
+// ── Paso 1: Formulario de inscripción ──
+if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'inscribir') {
     csrf_verify();
 
     $ip = clientIp();
     if (!rateLimitOk('inscribir:' . $ip, 5, 3600)) {
         $errores[] = 'Demasiadas inscripciones desde tu conexión. Intenta más tarde.';
-        $error = implode('<br>', array_map('e', $errores));
-        goto fin_post;
+        $error_msg = implode('<br>', array_map('e', $errores));
+        goto fin_form;
     }
 
     $nombre = trim($_POST['nombre'] ?? '');
@@ -54,42 +97,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         rateLimitRecord('inscribir:' . $ip, 5, 3600);
         $db = getDB();
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        
+
         try {
-            $stmt = $db->prepare("INSERT INTO usuarios (nombre, email, password, rol, rut, telefono, banco, tipo_cuenta, numero_cuenta, activo, aprobado) VALUES (?, ?, ?, 'periodista', ?, ?, ?, ?, ?, 1, 0)");
+            $stmt = $db->prepare("INSERT INTO usuarios (nombre, email, password, rol, rut, telefono, banco, tipo_cuenta, numero_cuenta, activo, aprobado, email_verificado) VALUES (?, ?, ?, 'periodista', ?, ?, ?, ?, ?, 1, 0, 0)");
             $stmt->execute([$nombre, $email, $hash, $rut, $telefono, $banco, $tipo_cuenta, $numero_cuenta]);
             $user_id = $db->lastInsertId();
-            
-            // Guardar datos adicionales de postulación
+
+            // Guardar postulación
             $intereses_json = json_encode(array_map('intval', $intereses));
-            $stmt2 = $db->prepare("INSERT INTO postulaciones (usuario_id, experiencia, intereses_categorias, motivacion) VALUES (?, ?, ?, ?)");
-            $stmt2->execute([$user_id, '', $intereses_json, $motivacion]);
+            $stmt2 = $db->prepare("INSERT INTO postulaciones (usuario_id, intereses_categorias, motivacion) VALUES (?, ?, ?)");
+            $stmt2->execute([$user_id, $intereses_json, $motivacion]);
+
+            // Generar y enviar código de verificación
+            $codigo = generarCodigo();
+            $db->prepare("INSERT INTO codigos_verificacion (email, codigo, expira_en) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE))")->execute([$email, $codigo]);
+            enviarCodigoVerificacion($email, $codigo);
+
+            // Guardar en sesión para el paso 2
+            $_SESSION['verificar_email'] = $email;
+            $_SESSION['verificar_nombre'] = $nombre;
             
-            // Notificar al admin
-            $admin = $db->query("SELECT email, nombre FROM usuarios WHERE rol='admin' AND activo=1 LIMIT 1")->fetch();
-            if ($admin) {
-                $subject = "Nuevo periodista inscrito: " . preg_replace('/[\r\n]+/', ' ', $nombre);
-                $msg = "
-                <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
-                    <h2 style='color:#5e6ad2;margin-bottom:1rem'>✍️ Nueva inscripción de periodista</h2>
-                    <p style='color:#f7f8f8;margin-bottom:.5rem'><strong>" . e($nombre) . "</strong> se ha inscrito en la plataforma.</p>
-                    <table style='color:#a0a4ab;font-size:.9rem;line-height:1.8'>
-                        <tr><td style='padding-right:1rem;color:#62666d'>Email:</td><td>" . e($email) . "</td></tr>
-                        <tr><td style='padding-right:1rem;color:#62666d'>RUT:</td><td>" . e($rut ?: '—') . "</td></tr>
-                        <tr><td style='padding-right:1rem;color:#62666d'>Teléfono:</td><td>" . e($telefono ?: '—') . "</td></tr>
-                        <tr><td style='padding-right:1rem;color:#62666d'>Banco:</td><td>" . e($banco ?: '—') . "</td></tr>
-                    </table>
-                    <p style='color:#a0a4ab;margin-top:1rem;line-height:1.6'><strong>Intereses periodísticos:</strong><br>" . interesesParaEmail($intereses) . "</p>
-                    <p style='color:#a0a4ab;line-height:1.6'><strong>Motivación:</strong><br>" . nl2br(e($motivacion ?: 'No indicada')) . "</p>
-                    <p style='margin-top:1.5rem'><a href='" . BASE_URL . "/admin/usuarios.php' style='display:inline-block;padding:10px 20px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px'>Revisar y aprobar</a></p>
-                    <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
-                    <p style='font-size:.8rem;color:#62666d'>El Correo de Valdivia · Sistema de Redacción</p>
-                </div>";
-                enviarCorreo($admin['email'], $subject, $msg);
-            }
-            
-            $success = '¡Inscripción recibida! Ahora el administrador revisará tus datos y te activará. Te llegará un correo cuando estés aprobado.';
-            $enviado = true;
+            // Redirigir al paso de código
+            header('Location: ' . BASE_URL . '/inscribirse.php?codigo=1&email=' . urlencode($email));
+            exit;
+
         } catch (PDOException $e) {
             if ($e->getCode() == 23000) {
                 $errores[] = 'Este email ya está registrado. ¿Ya te inscribiste antes?';
@@ -100,8 +131,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    $error = !empty($errores) ? implode('<br>', array_map('e', $errores)) : '';
-    fin_post:
+    $error_msg = !empty($errores) ? implode('<br>', array_map('e', $errores)) : '';
+    fin_form:
+}
+
+// Si viene con GET codigo, mostrar formulario de código
+if (isset($_GET['codigo'])) {
+    $modo = 'codigo_enviado';
+    $email_verificando = $_GET['email'] ?? $_SESSION['verificar_email'] ?? '';
+    if (!empty($email_verificando)) {
+        $_SESSION['verificar_email'] = $email_verificando;
+    }
 }
 ?><!DOCTYPE html>
 <html lang="es">
@@ -113,106 +153,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="<?= BASE_URL ?>/assets/style.css">
 <style>
-.inscribirse-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 2rem;
-    background: var(--bg);
-}
-.inscribirse-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 2.5rem;
-    width: 100%;
-    max-width: 700px;
-    box-shadow: 0 0 0 1px rgba(94,106,210,0.05), 0 8px 40px rgba(0,0,0,0.4);
-}
-.inscribirse-card .logo { text-align: center; margin-bottom: 1.5rem; }
-.inscribirse-card .logo svg { color: var(--text); width: 200px; height: auto; }
-.inscribirse-card h1 {
-    font-family: 'Geist', system-ui, sans-serif;
-    font-size: 1.3rem; font-weight: 600;
-    text-align: center; margin-bottom: .3rem;
-    color: var(--white);
-}
-.inscribirse-card .subtitle {
-    text-align: center; font-size: .85rem;
-    color: var(--text2); margin-bottom: 2rem; line-height: 1.6;
-}
-.form-section {
-    margin-bottom: 1.8rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-}
-.form-section h3 {
-    font-size: .85rem;
-    font-weight: 600;
-    color: var(--accent);
-    margin-bottom: 1rem;
-    font-family: 'Geist Mono', monospace;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-.terminos-box {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem;
-    margin: 1rem 0;
-    font-size: .8rem;
-    color: var(--text2);
-    line-height: 1.6;
-    max-height: 200px;
-    overflow-y: auto;
-}
-.success-box {
-    text-align: center;
-    padding: 3rem 1rem;
-}
-.success-box .icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-}
-.success-box h2 {
-    color: var(--success);
-    margin-bottom: 1rem;
-}
-.success-box p {
-    color: var(--text2);
-    line-height: 1.6;
-    margin-bottom: 2rem;
-}
+.inscribirse-page{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;background:var(--bg)}
+.inscribirse-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2.5rem;width:100%;max-width:700px;box-shadow:0 0 0 1px rgba(94,106,210,0.05),0 8px 40px rgba(0,0,0,0.4)}
+.inscribirse-card .logo{text-align:center;margin-bottom:1.5rem}
+.inscribirse-card .logo svg{color:var(--text);width:200px;height:auto}
+.inscribirse-card h1{font-family:'Geist',system-ui,sans-serif;font-size:1.3rem;font-weight:600;text-align:center;margin-bottom:.3rem;color:var(--white)}
+.inscribirse-card .subtitle{text-align:center;font-size:.85rem;color:var(--text2);margin-bottom:2rem;line-height:1.6}
+.form-section{margin-bottom:1.8rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+.form-section h3{font-size:.85rem;font-weight:600;color:var(--accent);margin-bottom:1rem;font-family:'Geist Mono',monospace;text-transform:uppercase;letter-spacing:1px}
+.terminos-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem;margin:1rem 0;font-size:.8rem;color:var(--text2);line-height:1.6;max-height:200px;overflow-y:auto}
+.success-box,.codigo-box{text-align:center;padding:2rem 1rem}
+.success-box .icon,.codigo-box .icon{font-size:4rem;margin-bottom:1rem}
+.success-box h2{color:var(--success);margin-bottom:1rem}
+.success-box p,.codigo-box p{color:var(--text2);line-height:1.6;margin-bottom:1rem}
+.codigo-input{max-width:300px;margin:1.5rem auto}
+.codigo-input input{text-align:center;font-size:1.8rem;font-family:'Geist Mono',monospace;letter-spacing:10px;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);width:100%;outline:none;transition:all .25s}
+.codigo-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 </style>
 </head>
 <body class="inscribirse-page">
 <div class="inscribirse-card">
-    <div class="logo">
-        <?php include ROOT_PATH . '/includes/logo.svg'; ?>
-    </div>
-    
-    <?php if ($enviado): ?>
+<div class="logo"><?php include ROOT_PATH.'/includes/logo.svg'; ?></div>
+
+<?php if ($modo === 'verificado'): ?>
     <div class="success-box">
-        <div class="icon">✍️</div>
-        <h2>¡Inscripción recibida!</h2>
-        <p>Gracias por postular a <strong>El Correo de Valdivia</strong>.<br>
-        El administrador revisará tus datos y te activará a la brevedad.<br>
-        Te llegará un correo de confirmación cuando estés aprobado.</p>
+        <div class="icon">✅</div>
+        <h2>Email verificado</h2>
+        <p>Gracias por registrarte en <strong>El Correo de Valdivia</strong>. Tu email ha sido verificado correctamente.<br>
+        Ahora el administrador revisará tus datos y te activará a la brevedad.<br>
+        Te llegará un correo cuando estés aprobado.</p>
         <a href="<?= BASE_URL ?>/index.php" class="btn btn-primary">Volver al inicio</a>
     </div>
-    <?php else: ?>
-    
-    <h1>Inscribirse como Periodista</h1>
-    <p class="subtitle">Completa tus datos para postular a la redacción de <strong>El Correo de Valdivia</strong>. El administrador revisará tu solicitud y te activará.</p>
-    
-    <?php if ($error): ?>
-    <div class="alert alert-error"><?= $error ?></div>
-    <?php endif; ?>
 
+<?php elseif ($modo === 'codigo_enviado'): ?>
+    <div class="codigo-box">
+        <div class="icon">📧</div>
+        <h1>Verifica tu email</h1>
+        <p>Hemos enviado un código de verificación a<br>
+        <strong style="color:var(--accent)"><?= e($email_verificando) ?></strong></p>
+        <p style="font-size:.8rem;color:var(--muted)">Revisa tu bandeja de entrada (y la carpeta de spam si no lo ves).</p>
+        
+        <?php if ($error): ?>
+        <div class="alert alert-error"><?= $error ?></div>
+        <?php endif; ?>
+        
+        <?php notificarFlash(); ?>
+        
+        <form method="post" action="<?= BASE_URL ?>/inscribirse.php">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="verificar">
+            <div class="codigo-input">
+                <input type="text" name="codigo" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="000000" autofocus required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="padding:.8rem 2.5rem;font-size:.95rem">
+                🔐 Verificar código
+            </button>
+        </form>
+        
+        <form method="post" action="<?= BASE_URL ?>/inscribirse.php" style="margin-top:1.5rem">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="reenviar">
+            <button type="submit" class="btn btn-secondary btn-sm">
+                🔄 Reenviar código
+            </button>
+        </form>
+        
+        <p style="margin-top:1.5rem;font-size:.8rem;color:var(--muted)">
+            El código expira en 30 minutos.
+        </p>
+    </div>
+
+<?php else: ?>
+    <h1>Inscribirse como Periodista</h1>
+    <p class="subtitle">Completa tus datos para postular a la redacción de <strong>El Correo de Valdivia</strong>. Recibirás un código de verificación por email y luego el administrador revisará tu solicitud.</p>
+    
+    <?php if (!empty($error_msg)): ?>
+    <div class="alert alert-error"><?= $error_msg ?></div>
+    <?php endif; ?>
+    
     <form method="post">
         <?= csrf_field() ?>
+        <input type="hidden" name="action" value="inscribir">
+        
         <div class="form-section">
             <h3>📋 Datos personales</h3>
             <div class="form-row">
@@ -228,11 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-row">
                 <div class="form-group">
                     <label for="password">Contraseña *</label>
-                    <input type="password" id="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres">
+                    <input type="password" id="password" name="password" required minlength="8" placeholder="Mínimo 8 caracteres">
                 </div>
                 <div class="form-group">
                     <label for="password2">Repetir contraseña *</label>
-                    <input type="password" id="password2" name="password2" required minlength="6" placeholder="Repite la contraseña">
+                    <input type="password" id="password2" name="password2" required minlength="8" placeholder="Repite la contraseña">
                 </div>
             </div>
             <div class="form-row">
@@ -274,7 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="form-section" style="border-bottom:none">
             <h3>🎯 Temas de interés periodístico</h3>
             <p style="font-size:.8rem;color:var(--text2);margin-bottom:1rem;line-height:1.5">
-                Selecciona los temas que más te interesa cubrir. Esto ayudará al administrador a asignarte las historias que mejor se ajusten a tu perfil.
+                Selecciona los temas que más te interesa cubrir.
             </p>
             <div class="checkbox-group" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem">
                 <?php
@@ -306,7 +328,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <label class="checkbox-item" style="margin-bottom:1.5rem">
             <input type="checkbox" name="acepto_terminos" value="1" required>
-            <span class="label" style="font-size:.85rem">Acepto las <a href="<?= BASE_URL ?>/condiciones.php" target="_blank" style="color:var(--accent);text-decoration:underline">condiciones de funcionamiento</a>, la cesión de derechos y las penalizaciones por atraso. *</span>
+            <span class="label" style="font-size:.85rem">
+                Acepto las <a href="<?= BASE_URL ?>/condiciones.php" target="_blank" style="color:var(--accent);text-decoration:underline">condiciones de funcionamiento</a>, la cesión de derechos y las penalizaciones por atraso. *
+            </span>
         </label>
         
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.8rem;font-size:.95rem">
@@ -317,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ¿Ya tienes cuenta? <a href="<?= BASE_URL ?>/index.php">Inicia sesión</a>
         </p>
     </form>
-    <?php endif; ?>
+<?php endif; ?>
 </div>
 </body>
 </html>

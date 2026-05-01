@@ -148,7 +148,7 @@ $pendientes = $db->query("
     FROM usuarios u
     LEFT JOIN postulaciones p ON u.id = p.usuario_id
     WHERE u.rol='periodista' AND u.aprobado = 0 AND u.activo = 1
-    ORDER BY u.created_at DESC
+    ORDER BY u.email_verificado ASC, u.created_at DESC
 ")->fetchAll();
 
 $usuarios = $db->query("SELECT * FROM usuarios ORDER BY FIELD(aprobado,0) DESC, FIELD(rol,'admin') DESC, nombre ASC")->fetchAll();
@@ -201,20 +201,27 @@ if ($editId) {
                     </div>
                 </details>
                 <?php endif; ?>
-                <?php if ($p['experiencia']): ?>
+                <?php if ($p['motivacion']): ?>
                 <details>
                     <summary style="font-size:.8rem;color:var(--accent);cursor:pointer">💭 Ver motivación</summary>
                     <p style="font-size:.8rem;color:var(--text2);margin-top:.3rem;line-height:1.5"><?= nl2br(e($p['motivacion'])) ?></p>
                 </details>
                 <?php endif; ?>
+                <p style="font-size:.75rem;color:var(--muted);margin-top:.5rem">
+                    📧 Email: <?= $p['email_verificado'] ? '<span style="color:var(--success)">✅ Verificado</span>' : '<span style="color:var(--error)">❌ No verificado</span>' ?>
+                </p>
             </div>
-            <div style="display:flex;gap:.5rem;flex-shrink:0">
+            <div style="display:flex;gap:.5rem;flex-shrink:0;flex-direction:column;align-items:flex-end">
+                <?php if ($p['email_verificado']): ?>
                 <form method="post">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="aprobar">
                     <input type="hidden" name="id" value="<?= $p['id'] ?>">
                     <button type="submit" class="btn btn-success btn-sm">✅ Aprobar</button>
                 </form>
+                <?php else: ?>
+                <span style="font-size:.7rem;color:var(--error);text-align:right;max-width:180px">Debe verificar su email antes de aprobar</span>
+                <?php endif; ?>
                 <form method="post" onsubmit="return confirm('¿Rechazar esta postulación?')">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="rechazar">
@@ -337,6 +344,7 @@ if ($editId) {
                     <th>Rol</th>
                     <th>Estado</th>
                     <th>Aprobado</th>
+                    <th>Email verif.</th>
                     <th>RUT</th>
                     <th>Banco</th>
                     <th>Acciones</th>
@@ -362,6 +370,15 @@ if ($editId) {
                             <span style="color:var(--success)">✅</span>
                         <?php else: ?>
                             <span style="color:var(--warning)">⏳</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ($u['rol'] === 'admin'): ?>
+                            <span style="color:var(--muted)">—</span>
+                        <?php elseif ($u['email_verificado']): ?>
+                            <span style="color:var(--success)">✅</span>
+                        <?php else: ?>
+                            <span style="color:var(--error)">❌</span>
                         <?php endif; ?>
                     </td>
                     <td><?= e($u['rut'] ?? '—') ?></td>

@@ -188,10 +188,11 @@ if (isset($_GET['codigo'])) {
 <?php if ($modo === 'verificado'): ?>
     <div class="success-box">
         <div class="icon">✅</div>
-        <h2>Email verificado</h2>
-        <p>Gracias por registrarte en <strong>El Correo de Valdivia</strong>. Tu email ha sido verificado correctamente.<br>
-        Ahora el administrador revisará tus datos y te activará a la brevedad.<br>
-        Te llegará un correo cuando estés aprobado.</p>
+        <h2>Postulación recibida</h2>
+        <p>Gracias por postular a <strong>El Correo de Valdivia</strong>. Tu email ha sido verificado correctamente.<br>
+        Este registro es exclusivo para periodistas, redactores y colaboradores del medio. No es una suscripción de lectores.<br>
+        Ahora el equipo editorial revisará tus antecedentes y, si cumples con los requisitos, te activaremos a la brevedad.<br>
+        Recibirás un correo cuando tu cuenta esté aprobada.</p>
         <a href="<?= BASE_URL ?>/index.php" class="btn btn-primary">Volver al inicio</a>
     </div>
 

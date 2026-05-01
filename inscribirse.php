@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($password)) $errores[] = 'La contraseña es obligatoria.';
     if (strlen($password) < 8) $errores[] = 'La contraseña debe tener al menos 8 caracteres.';
     if ($password !== $password2) $errores[] = 'Las contraseñas no coinciden.';
-    if (!$acepto_terminos) $errores[] = 'Debes aceptar los términos y condiciones.';
+    if (!$acepto_terminos) $errores[] = 'Debes aceptar las condiciones de funcionamiento, cesión de derechos y penalizaciones.';
 
     if (empty($errores)) {
         rateLimitRecord('inscribir:' . $ip, 5, 3600);
@@ -306,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <label class="checkbox-item" style="margin-bottom:1.5rem">
             <input type="checkbox" name="acepto_terminos" value="1" required>
-            <span class="label" style="font-size:.85rem">Acepto los términos y condiciones *</span>
+            <span class="label" style="font-size:.85rem">Acepto las <a href="<?= BASE_URL ?>/condiciones.php" target="_blank" style="color:var(--accent);text-decoration:underline">condiciones de funcionamiento</a>, la cesión de derechos y las penalizaciones por atraso. *</span>
         </label>
         
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.8rem;font-size:.95rem">

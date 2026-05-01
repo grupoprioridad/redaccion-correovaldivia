@@ -52,21 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$nombreSafe}</strong>,</p>
                 <p style='color:#a0a4ab;line-height:1.6'>Tu solicitud de inscripción ha sido <strong style='color:#4ade80'>aprobada</strong>.<br>
                 Ya puedes ingresar a la plataforma de redacción de El Correo de Valdivia para ver las historias disponibles y comenzar a trabajar.</p>
-                                <p style='margin:1.5rem 0'><a href='" . BASE_URL . "/index.php' style='display:inline-block;padding:12px 24px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px;font-size:.95rem'>Ingresar a la plataforma →</a></p>
+                <p style='margin:1.5rem 0'><a href='" . BASE_URL . "/index.php' style='display:inline-block;padding:12px 24px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px;font-size:.95rem'>Ingresar a la plataforma →</a></p>
                 <p style='color:#a0a4ab;font-size:.85rem;line-height:1.6'>Tus datos de acceso:<br>
                 Email: {$emailSafe}<br>
                 Contraseña: la que registraste al inscribirte.</p>
                 <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
-                <h3 style='color:#5e6ad2;font-size:.9rem;margin-bottom:.8rem'>📋 Resumen de condiciones</h3>
-                <table style='color:#a0a4ab;font-size:.8rem;line-height:1.8;width:100%'>
-                <tr><td style='padding:4px 0'><strong style='color:#f7f8f8'>✍️ Cesión de derechos:</strong> Al entregar una historia, cedes los derechos de publicación a El Correo de Valdivia. Puedes republicar en tu portafolio dando crédito.</td></tr>
-                <tr><td style='padding:4px 0'><strong style='color:#f7f8f8'>⏰ Recordatorios:</strong> Correos a mitad del plazo y día antes del vencimiento.</td></tr>
-                <tr><td style='padding:4px 0'><strong style='color:#f7f8f8'>⚖️ Penalización:</strong> Si entregas atrasado, se descuenta 10% del presupuesto por día (máx. 50%). A los 7 días la historia se reasigna.</td></tr>
-                <tr><td style='padding:4px 0'><strong style='color:#f7f8f8'>🚫 Strikes:</strong> 3 reasignaciones por atraso = cuenta desactivada automáticamente.</td></tr>
-                </table>
-                <p style='margin-top:1rem'><a href='" . BASE_URL . "/condiciones.php' style='color:#5e6ad2;font-size:.8rem'>Ver condiciones completas →</a></p>
-                <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
-                <p style='font-size:.8rem;color:#62666d'>El Correo de Valdivia · Sistema de Redacción</p>            </div>";
+                <p style='font-size:.8rem;color:#62666d'>El Correo de Valdivia · Sistema de Redacción</p>
+            </div>";
             enviarCorreo($u['email'], $subject, $msg);
         }
 

@@ -4,8 +4,10 @@ securityHeaders();
 
 $error = '';
 $success = '';
-$modo = 'formulario'; // formulario, codigo_enviado, verificado
+$modo = 'formulario';
 $email_verificando = '';
+$db = getDB();
+$categorias_disponibles = $db->query("SELECT id, nombre, descripcion FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
 
 // ── Paso 2: Verificar código ──
 if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
@@ -300,8 +302,7 @@ if (isset($_GET['codigo'])) {
             </p>
             <div class="checkbox-group" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem">
                 <?php
-                $cats = $db->query("SELECT id, nombre, descripcion FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
-                foreach ($cats as $cat):
+                foreach ($categorias_disponibles as $cat):
                 ?>
                 <label class="checkbox-item">
                     <input type="checkbox" name="intereses[]" value="<?= $cat['id'] ?>" <?= in_array((string)$cat['id'], $_POST['intereses'] ?? []) ? 'checked' : '' ?>>

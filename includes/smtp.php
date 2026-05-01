@@ -31,6 +31,8 @@ function enviarEmail($to, $subject, $htmlBody) {
         $mail->setFrom(SMTP_FROM, SMTP_FROM_NAME);
         $mail->addAddress($to);
         $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+        $mail->Encoding = 'base64';
         $mail->Subject = $subject;
         $mail->Body = $htmlBody;
         $mail->AltBody = strip_tags($htmlBody);

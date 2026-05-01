@@ -11,17 +11,19 @@ $db = getDB();
 $categorias_disponibles = $db->query("SELECT id, nombre, descripcion FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
 
 // ── Paso 2: Verificar código ──
-if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
+if (isset($_GET['verificado'])) {
+    $modo = 'verificado';
+} elseif (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
     $modo = 'codigo_enviado';
     $email_verificando = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
     if (!isset($_SESSION['csrf']) || empty($_SESSION['csrf'])) {
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
     }
-    
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar') {
         $codigo = trim($_POST['codigo'] ?? '');
         $email = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
-        
+
         if (empty($email)) {
             $error = 'Sesión expirada. Regístrate de nuevo.';
             $modo = 'formulario';
@@ -32,16 +34,16 @@ if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST[
             $stmt = $db->prepare("SELECT * FROM codigos_verificacion WHERE email = ? AND codigo = ? AND usado = 0 AND expira_en > NOW() ORDER BY created_at DESC LIMIT 1");
             $stmt->execute([$email, $codigo]);
             $row = $stmt->fetch();
-            
+
             if ($row) {
                 // Marcar código como usado
                 $db->prepare("UPDATE codigos_verificacion SET usado = 1 WHERE id = ?")->execute([$row['id']]);
                 // Marcar email como verificado
                 $db->prepare("UPDATE usuarios SET email_verificado = 1 WHERE email = ? AND email_verificado = 0")->execute([$email]);
-                
+
                 $_SESSION['verificar_email'] = '';
-                $modo = 'verificado';
-                $success = '✅ Email verificado correctamente. Ahora el administrador revisará tu solicitud.';
+                header('Location: ' . BASE_URL . '/inscribirse?verificado=1');
+                exit;
             } else {
                 $error = 'Código inválido o expirado. Solicita uno nuevo.';
             }
@@ -59,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reenv
         enviarCodigoVerificacion($email, $codigo);
         flash('info', 'Nuevo código enviado a tu email.');
     }
-    header('Location: ' . BASE_URL . '/inscribirse.php?codigo=1&email=' . urlencode($email));
+    header('Location: ' . BASE_URL . '/inscribirse?codigo=1&email=' . urlencode($email));
     exit;
 }
 
@@ -123,8 +125,7 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
             $_SESSION['verificar_nombre'] = $nombre;
             
             // Redirigir al paso de código
-            header('Location: ' . BASE_URL . '/inscribirse.php?codigo=1&email=' . urlencode($email));
-            exit;
+            header('Location: ' . BASE_URL . '/inscribirse?codigo=1&email=' . urlencode($email));
             exit;
 
         } catch (PDOException $e) {
@@ -175,6 +176,9 @@ if (isset($_GET['codigo'])) {
 .codigo-input{max-width:300px;margin:1.5rem auto}
 .codigo-input input{text-align:center;font-size:1.8rem;font-family:'Geist Mono',monospace;letter-spacing:10px;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);width:100%;outline:none;transition:all .25s}
 .codigo-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.btn[disabled]{opacity:.7;cursor:wait;transform:none!important;box-shadow:none!important}
+.btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:btn-spin .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes btn-spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body class="inscribirse-page">
@@ -205,7 +209,7 @@ if (isset($_GET['codigo'])) {
         
         <?php notificarFlash(); ?>
         
-        <form method="post" action="<?= BASE_URL ?>/inscribirse.php?codigo=1">
+        <form method="post" action="<?= BASE_URL ?>/inscribirse?codigo=1">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="verificar">
             <div class="codigo-input">
@@ -220,7 +224,7 @@ if (isset($_GET['codigo'])) {
             <p style="font-size:.85rem;color:var(--text2);margin-bottom:.8rem">
                 ¿No recibiste el código?
             </p>
-            <form method="post" action="<?= BASE_URL ?>/inscribirse.php?codigo=1" style="display:inline">
+            <form method="post" action="<?= BASE_URL ?>/inscribirse?codigo=1" style="display:inline">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="reenviar">
                 <input type="hidden" name="email" value="<?= e($email_verificando) ?>">
@@ -353,5 +357,19 @@ if (isset($_GET['codigo'])) {
     </form>
 <?php endif; ?>
 </div>
+<script>
+document.querySelectorAll('form').forEach(function(form){
+    form.addEventListener('submit', function(){
+        var btn = form.querySelector('button[type="submit"]');
+        if (!btn || btn.disabled) return;
+        var label = form.querySelector('input[name="action"]')?.value === 'reenviar'
+            ? 'Reenviando…'
+            : (form.querySelector('input[name="action"]')?.value === 'verificar' ? 'Verificando…' : 'Enviando…');
+        btn.dataset.originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="btn-spinner"></span>' + label;
+        btn.disabled = true;
+    });
+});
+</script>
 </body>
 </html>

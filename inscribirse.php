@@ -6,7 +6,17 @@ $error = '';
 $success = '';
 $enviado = false;
 
-$errores = [];
+function interesesParaEmail($ids) {
+    if (empty($ids)) return 'No seleccionó intereses';
+    $db = getDB();
+    $ids_int = array_map('intval', $ids);
+    $placeholders = implode(',', array_fill(0, count($ids_int), '?'));
+    $cats = $db->prepare("SELECT nombre FROM categorias_redaccion WHERE id IN ($placeholders)");
+    $cats->execute($ids_int);
+    $nombres = $cats->fetchAll(PDO::FETCH_COLUMN);
+    return implode(', ', $nombres);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
 
@@ -26,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $banco = trim($_POST['banco'] ?? '');
     $tipo_cuenta = trim($_POST['tipo_cuenta'] ?? '');
     $numero_cuenta = trim($_POST['numero_cuenta'] ?? '');
-    $experiencia = trim($_POST['experiencia'] ?? '');
+    $intereses = $_POST['intereses'] ?? [];
     $motivacion = trim($_POST['motivacion'] ?? '');
     $acepto_terminos = isset($_POST['acepto_terminos']) ? 1 : 0;
 
@@ -51,8 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user_id = $db->lastInsertId();
             
             // Guardar datos adicionales de postulación
-            $stmt2 = $db->prepare("INSERT INTO postulaciones (usuario_id, experiencia, motivacion) VALUES (?, ?, ?)");
-            $stmt2->execute([$user_id, $experiencia, $motivacion]);
+            $intereses_json = json_encode(array_map('intval', $intereses));
+            $stmt2 = $db->prepare("INSERT INTO postulaciones (usuario_id, experiencia, intereses_categorias, motivacion) VALUES (?, ?, ?, ?)");
+            $stmt2->execute([$user_id, '', $intereses_json, $motivacion]);
             
             // Notificar al admin
             $admin = $db->query("SELECT email, nombre FROM usuarios WHERE rol='admin' AND activo=1 LIMIT 1")->fetch();
@@ -68,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <tr><td style='padding-right:1rem;color:#62666d'>Teléfono:</td><td>" . e($telefono ?: '—') . "</td></tr>
                         <tr><td style='padding-right:1rem;color:#62666d'>Banco:</td><td>" . e($banco ?: '—') . "</td></tr>
                     </table>
-                    <p style='color:#a0a4ab;margin-top:1rem;line-height:1.6'><strong>Experiencia:</strong><br>" . nl2br(e($experiencia ?: 'No indicada')) . "</p>
+                    <p style='color:#a0a4ab;margin-top:1rem;line-height:1.6'><strong>Intereses periodísticos:</strong><br>" . interesesParaEmail($intereses) . "</p>
                     <p style='color:#a0a4ab;line-height:1.6'><strong>Motivación:</strong><br>" . nl2br(e($motivacion ?: 'No indicada')) . "</p>
                     <p style='margin-top:1.5rem'><a href='" . BASE_URL . "/admin/usuarios.php' style='display:inline-block;padding:10px 20px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px'>Revisar y aprobar</a></p>
                     <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
@@ -261,14 +272,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         
         <div class="form-section" style="border-bottom:none">
-            <h3>🎯 Sobre ti</h3>
-            <div class="form-group">
-                <label for="experiencia">Experiencia periodística</label>
-                <textarea id="experiencia" name="experiencia" rows="3" placeholder="Cuéntanos brevemente tu experiencia en periodismo, comunicación o escritura..."><?= e($_POST['experiencia'] ?? '') ?></textarea>
-            </div>
-            <div class="form-group">
-                <label for="motivacion">¿Por qué quieres ser parte de El Correo de Valdivia?</label>
-                <textarea id="motivacion" name="motivacion" rows="3" placeholder="Comparte tu motivación para unirte a nuestra redacción..."><?= e($_POST['motivacion'] ?? '') ?></textarea>
+            <h3>🎯 Temas de interés periodístico</h3>
+            <p style="font-size:.8rem;color:var(--text2);margin-bottom:1rem;line-height:1.5">
+                Selecciona los temas que más te interesa cubrir. Esto ayudará al administrador a asignarte las historias que mejor se ajusten a tu perfil.
+            </p>
+            <div class="checkbox-group" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem">
+                <?php
+                $cats = $db->query("SELECT id, nombre, descripcion FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
+                foreach ($cats as $cat):
+                ?>
+                <label class="checkbox-item">
+                    <input type="checkbox" name="intereses[]" value="<?= $cat['id'] ?>" <?= in_array((string)$cat['id'], $_POST['intereses'] ?? []) ? 'checked' : '' ?>>
+                    <span class="label">
+                        <strong><?= e($cat['nombre']) ?></strong>
+                        <?php if ($cat['descripcion']): ?>
+                        <br><span style="font-size:.7rem;color:var(--muted)"><?= e($cat['descripcion']) ?></span>
+                        <?php endif; ?>
+                    </span>
+                </label>
+                <?php endforeach; ?>
             </div>
         </div>
         

@@ -14,9 +14,10 @@ $stats['periodistas'] = $db->query("SELECT COUNT(*) FROM usuarios WHERE rol='per
 
 // Últimas historias
 $historias = $db->query("
-    SELECT h.*, u.nombre AS periodista_nombre
+    SELECT h.*, u.nombre AS periodista_nombre, c.nombre AS categoria_nombre
     FROM historias h
     LEFT JOIN usuarios u ON h.periodista_asignado = u.id
+    LEFT JOIN categorias_redaccion c ON h.categoria_id = c.id
     ORDER BY h.created_at DESC
     LIMIT 15
 ")->fetchAll();
@@ -65,6 +66,7 @@ $historias = $db->query("
                 <thead>
                     <tr>
                         <th>Título</th>
+                        <th>Categoría</th>
                         <th>Estado</th>
                         <th>Periodista</th>
                         <th>Presupuesto</th>
@@ -76,7 +78,8 @@ $historias = $db->query("
                     <?php foreach ($historias as $h): ?>
                     <tr>
                         <td><strong><?= e($h['titulo']) ?></strong></td>
-                        <td><span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span></td>
+                        <td><?php if ($h['categoria_nombre']): ?><span style="font-size:.75rem;color:var(--accent)"><?= e($h['categoria_nombre']) ?></span><?php else: ?><span style="font-size:.7rem;color:var(--muted)">—</span><?php endif; ?></td>
+                        <td><span class="badge badge-<?= $h['estado'] ?>"><?= str_replace('_', ' ', $h['estado']) ?></span></td>
                         <td><?= e($h['periodista_nombre'] ?? '—') ?></td>
                         <td>$<?= number_format($h['presupuesto'], 0, ',', '.') ?></td>
                         <td><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></td>

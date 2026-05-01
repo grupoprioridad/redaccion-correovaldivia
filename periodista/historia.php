@@ -6,7 +6,7 @@ $db = getDB();
 $id = (int)($_GET['id'] ?? 0);
 $user_id = $_SESSION['usuario_id'];
 
-$historia = $db->prepare("SELECT h.*, u.nombre AS creador_nombre FROM historias h JOIN usuarios u ON h.creada_por = u.id WHERE h.id = ? AND h.periodista_asignado = ?");
+$historia = $db->prepare("SELECT h.*, u.nombre AS creador_nombre, c.nombre AS categoria_nombre FROM historias h JOIN usuarios u ON h.creada_por = u.id LEFT JOIN categorias_redaccion c ON h.categoria_id = c.id WHERE h.id = ? AND h.periodista_asignado = ?");
 $historia->execute([$id, $user_id]);
 $h = $historia->fetch();
 
@@ -95,6 +95,10 @@ $pag = $pago->fetch();
         <div class="detail-row">
             <span class="detail-label">Extensión</span>
             <span class="detail-value"><?= e($h['extension_esperada'] ?? '—') ?></span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Categoría</span>
+            <span class="detail-value"><?= e($h['categoria_nombre'] ?? '—') ?></span>
         </div>
     </div>
     

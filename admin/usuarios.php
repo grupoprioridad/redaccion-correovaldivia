@@ -176,13 +176,24 @@ if ($editId) {
                 <?php if ($p['rut']): ?><p style="font-size:.75rem;color:var(--muted)">RUT: <?= e($p['rut']) ?></p><?php endif; ?>
                 <?php if ($p['telefono']): ?><p style="font-size:.75rem;color:var(--muted)">📞 <?= e($p['telefono']) ?></p><?php endif; ?>
                 <?php if ($p['banco']): ?><p style="font-size:.75rem;color:var(--muted)">🏦 <?= e($p['banco']) ?> · <?= e($p['tipo_cuenta']) ?> · <?= e($p['numero_cuenta']) ?></p><?php endif; ?>
-                <?php if ($p['experiencia']): ?>
-                <details style="margin-top:.5rem">
-                    <summary style="font-size:.8rem;color:var(--accent);cursor:pointer">📋 Ver experiencia</summary>
-                    <p style="font-size:.8rem;color:var(--text2);margin-top:.3rem;line-height:1.5"><?= nl2br(e($p['experiencia'])) ?></p>
+                <?php if ($p['intereses_categorias']): ?>
+                <details>
+                    <summary style="font-size:.8rem;color:var(--accent);cursor:pointer">🎯 Ver intereses periodísticos</summary>
+                    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.5rem">
+                        <?php
+                        $ids = json_decode($p['intereses_categorias'], true) ?: [];
+                        if (!empty($ids)) {
+                            $ph = implode(',', array_fill(0, count($ids), '?'));
+                            $cats = $db->prepare("SELECT nombre FROM categorias_redaccion WHERE id IN ($ph)");
+                            $cats->execute($ids);
+                            foreach ($cats->fetchAll(PDO::FETCH_COLUMN) as $cn):
+                        ?>
+                        <span style="background:var(--surface3);padding:3px 10px;border-radius:6px;font-size:.75rem;color:var(--accent)"><?= e($cn) ?></span>
+                        <?php endforeach; } ?>
+                    </div>
                 </details>
                 <?php endif; ?>
-                <?php if ($p['motivacion']): ?>
+                <?php if ($p['experiencia']): ?>
                 <details>
                     <summary style="font-size:.8rem;color:var(--accent);cursor:pointer">💭 Ver motivación</summary>
                     <p style="font-size:.8rem;color:var(--text2);margin-top:.3rem;line-height:1.5"><?= nl2br(e($p['motivacion'])) ?></p>

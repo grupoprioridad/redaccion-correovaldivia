@@ -3,6 +3,7 @@ $titulo = 'Nueva Historia';
 require_once __DIR__ . '/header.php';
 
 $db = getDB();
+$categorias = $db->query("SELECT id, nombre FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
 $periodistas = $db->query("SELECT id, nombre, email FROM usuarios WHERE rol='periodista' AND activo=1 AND aprobado=1 ORDER BY nombre")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -13,14 +14,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ext = trim($_POST['extension'] ?? '');
     $fecha = $_POST['fecha_entrega'] ?? '';
     $presupuesto = (int)($_POST['presupuesto'] ?? 0);
+    $categoria_id = !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null;
     $visible_todos = isset($_POST['visible_todos']) ? 1 : 0;
     $periodistas_sel = $_POST['periodistas'] ?? [];
     
     if (empty($tit) || empty($fecha)) {
         flash('error', 'El título y la fecha de entrega son obligatorios.');
     } else {
-        $stmt = $db->prepare("INSERT INTO historias (titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, visible_para_todos, creada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $visible_todos, $_SESSION['usuario_id']]);
+        $stmt = $db->prepare("INSERT INTO historias (categoria_id, titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, visible_para_todos, creada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$categoria_id, $tit, $desc, $foco, $ext, $fecha, $presupuesto, $visible_todos, $_SESSION['usuario_id']]);
         $historia_id = $db->lastInsertId();
         
         // Si no es visible para todos, guardar visibilidad selectiva
@@ -115,9 +117,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         
         <div class="form-group">
-            <label for="presupuesto">Presupuesto ($)</label>
-            <input type="number" id="presupuesto" name="presupuesto" min="0" step="1" placeholder="Ej: 150000" value="<?= e($_POST['presupuesto'] ?? '') ?>">
-            <div class="hint">Monto total en pesos chilenos.</div>
+            <label for="categoria_id">Categoría / Tema de interés</label>
+            <select id="categoria_id" name="categoria_id">
+                <option value="">Sin categoría</option>
+                <?php foreach ($categorias as $cat): ?>
+                <option value="<?= $cat['id'] ?>" <?= ($_POST['categoria_id']??'')==(string)$cat['id']?'selected':'' ?>><?= e($cat['nombre']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="hint">Los periodistas interesados en esta categoría recibirán prioridad en la notificación.</div>
         </div>
         
         <div class="form-group">

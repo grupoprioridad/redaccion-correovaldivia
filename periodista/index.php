@@ -6,7 +6,9 @@ $db = getDB();
 $user_id = $_SESSION['usuario_id'];
 
 $mis_historias = $db->prepare("
-    SELECT * FROM historias 
+    SELECT h.*, c.nombre AS categoria_nombre
+    FROM historias h
+    LEFT JOIN categorias_redaccion c ON h.categoria_id = c.id
     WHERE periodista_asignado = ? 
     ORDER BY FIELD(estado,'asignada','en_curso','entregada','revisada','pagada'), fecha_entrega ASC
 ");
@@ -14,9 +16,10 @@ $mis_historias->execute([$user_id]);
 $mis_h = $mis_historias->fetchAll();
 
 $disponibles = $db->prepare("
-    SELECT h.*, u.nombre AS creador_nombre
+    SELECT h.*, u.nombre AS creador_nombre, c.nombre AS categoria_nombre
     FROM historias h
     JOIN usuarios u ON h.creada_por = u.id
+    LEFT JOIN categorias_redaccion c ON h.categoria_id = c.id
     WHERE h.estado = 'disponible'
     AND (
         h.visible_para_todos = 1
@@ -91,6 +94,12 @@ function initials($str) {
                 </p>
                 <?php endif; ?>
                 <div class="hc-meta">
+                <?php if ($h['categoria_nombre']): ?>
+                    <span class="hc-meta-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3 8 21"/><path d="M16 3l-2 18"/></svg>
+                        <?= e($h['categoria_nombre']) ?>
+                    </span>
+                    <?php endif; ?>
                     <span class="hc-meta-item">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?>
@@ -168,6 +177,12 @@ function initials($str) {
                 </p>
                 <?php endif; ?>
                 <div class="hc-meta">
+                    <?php if ($h['categoria_nombre']): ?>
+                    <span class="hc-meta-item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16"/><path d="M4 15h16"/><path d="M10 3 8 21"/><path d="M16 3l-2 18"/></svg>
+                        <?= e($h['categoria_nombre']) ?>
+                    </span>
+                    <?php endif; ?>
                     <span class="hc-meta-item">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?>

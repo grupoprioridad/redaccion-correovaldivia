@@ -36,6 +36,9 @@ $user = usuarioActual();
             <a href="<?= BASE_URL ?>/admin/pagos.php" class="<?= $current === 'pagos.php' ? 'active' : '' ?>">
                 💰 <span>Pagos</span>
             </a>
+            <a href="<?= BASE_URL ?>/admin/categorias.php" class="<?= $current === 'categorias.php' ? 'active' : '' ?>">
+                🏷️ <span>Categorías</span>
+            </a>
         </nav>
         <div class="user-info">
             <div class="name"><?= e($user['nombre']) ?></div>

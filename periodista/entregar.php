@@ -170,8 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p>Al entregar este contenido, aceptas ceder los derechos de publicación a <strong>El Correo de Valdivia</strong>.</p>
                 <p style="margin-top:.5rem;font-size:.75rem;color:var(--muted)">
                     Esto incluye el derecho de editar, publicar y distribuir el contenido en todas las plataformas del medio.
-                    La cesión no impide que puedas republicar el contenido en tu propio portafolio personal 
-                    dando crédito a El Correo de Valdivia como medio original.
+                    El contenido es de exclusiva propiedad de El Correo de Valdivia. El periodista no puede republicarlo sin autorización expresa del medio.
+                    El Correo de Valdivia se compromete a mantener tu autoría en todas las publicaciones.
                 </p>
             </div>
             
@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="checkbox" name="firma_aceptacion" value="1" required>
                 <span class="firma-text">
                     Acepto la cesión de derechos del contenido presentado. Confirmo que el trabajo es original 
-                    y de mi autoría, y cedo los derechos de publicación a El Correo de Valdivia.
+                    y es de mi autoría. Cedo los derechos de publicación en forma exclusiva a El Correo de Valdivia, quien se compromete a mantener mi autoría en todas las difusiones del contenido.
                 </span>
             </label>
         </div>

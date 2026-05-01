@@ -55,7 +55,8 @@ require_once __DIR__ . '/includes/config.php';
 <ul>
 <li><strong>El periodista cede los derechos de publicación</strong> del contenido a El Correo de Valdivia para su edición, publicación y distribución en todas las plataformas del medio.</li>
 <li>El periodista <strong>declara que el contenido es original y de su autoría</strong>.</li>
-<li>La cesión <strong>no impide</strong> que el periodista pueda republicar el contenido en su portafolio personal, dando crédito a El Correo de Valdivia como medio original.</li>
+<li>El contenido es de <strong>exclusiva propiedad</strong> de El Correo de Valdivia. El periodista no puede republicar el contenido original en otros medios sin autorización expresa del medio.</li>
+<li>El Correo de Valdivia se compromete a <strong>mantener la autoría</strong> del periodista en todos los contenidos que publique, difunda o distribuya.</li>
 <li>El documento de cesión queda almacenado en la plataforma.</li>
 </ul>
 <div class="highlight"><strong>📄 Importante:</strong> No se puede entregar una historia sin firmar la cesión de derechos. Es un paso obligatorio del proceso.</div>

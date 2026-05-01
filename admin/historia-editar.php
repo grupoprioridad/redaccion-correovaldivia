@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fecha = $_POST['fecha_entrega'] ?? '';
         $presupuesto = (int)($_POST['presupuesto'] ?? 0);
         $categoria_id = !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null;
-        $visible_todos = isset($_POST['visible_todos']) ? 1 : 0;
+        $visible_todos = (($_POST['visible_todos'] ?? '1') === '1') ? 1 : 0;
         $periodistas_sel = $_POST['periodistas'] ?? [];
         $periodista_nuevo = !empty($_POST['periodista_asignado']) ? (int)$_POST['periodista_asignado'] : null;
         $estadosValidos = ['disponible','asignada','en_curso','entregada','revisada','pagada'];
@@ -218,15 +218,26 @@ $pag = $pago->fetch();
         </div>
 
         <div class="form-group">
-            <label>Visibilidad (quién puede ver/tomar la historia si no está asignada)</label>
-            <div class="checkbox-group">
+            <label>¿A quién mostramos esta historia?</label>
+            <div class="hint" style="margin-bottom:.5rem">Quién puede verla en su panel mientras esté disponible (no afecta al ya asignado).</div>
+            <div class="checkbox-group" style="margin-bottom:.6rem">
                 <label class="checkbox-item">
-                    <input type="checkbox" id="edit_visible_todos" name="visible_todos" value="1" <?= !empty($h['visible_para_todos']) ? 'checked' : '' ?> onchange="toggleEditPeriodistas(this)">
-                    <span class="label">Visible para todos los periodistas</span>
+                    <input type="radio" name="visible_todos" value="1" <?= !empty($h['visible_para_todos']) ? 'checked' : '' ?> onchange="toggleEditPeriodistas()">
+                    <span class="label">A todos los periodistas</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="radio" name="visible_todos" value="0" <?= empty($h['visible_para_todos']) ? 'checked' : '' ?> onchange="toggleEditPeriodistas()">
+                    <span class="label">Solo a los periodistas que yo elija</span>
                 </label>
             </div>
-            <div id="edit-periodistas-select" style="<?= !empty($h['visible_para_todos']) ? 'display:none' : '' ?>">
-                <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Si desmarcas "todos", elige aquí los periodistas que sí podrán verla:</p>
+            <div id="edit-periodistas-select" style="padding:.6rem .8rem;border:1px solid var(--border);border-radius:8px;<?= !empty($h['visible_para_todos']) ? 'opacity:.5;pointer-events:none' : '' ?>">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+                    <p style="font-size:.8rem;color:var(--muted);margin:0">Marca uno o varios periodistas:</p>
+                    <div style="display:flex;gap:.4rem">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAllPeriodistas(true)">Marcar todos</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAllPeriodistas(false)">Desmarcar</button>
+                    </div>
+                </div>
                 <?php foreach ($periodistas as $p): ?>
                 <label class="checkbox-item">
                     <input type="checkbox" name="periodistas[]" value="<?= $p['id'] ?>" <?= in_array((int)$p['id'], $visibilidad_actual, true) ? 'checked' : '' ?>>
@@ -237,8 +248,15 @@ $pag = $pago->fetch();
         </div>
 
         <script>
-        function toggleEditPeriodistas(checkbox) {
-            document.getElementById('edit-periodistas-select').style.display = checkbox.checked ? 'none' : 'block';
+        function toggleEditPeriodistas() {
+            var radio = document.querySelector('input[name="visible_todos"]:checked');
+            var box = document.getElementById('edit-periodistas-select');
+            var todos = !radio || radio.value === '1';
+            box.style.opacity = todos ? '.5' : '1';
+            box.style.pointerEvents = todos ? 'none' : 'auto';
+        }
+        function toggleAllPeriodistas(check) {
+            document.querySelectorAll('#edit-periodistas-select input[type="checkbox"]').forEach(function(cb){ cb.checked = check; });
         }
         </script>
 

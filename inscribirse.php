@@ -212,17 +212,21 @@ if (isset($_GET['codigo'])) {
             </button>
         </form>
         
-        <form method="post" action="<?= BASE_URL ?>/inscribirse.php" style="margin-top:1.5rem">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="reenviar">
-            <button type="submit" class="btn btn-secondary btn-sm">
-                🔄 Reenviar código
-            </button>
-        </form>
-        
-        <p style="margin-top:1.5rem;font-size:.8rem;color:var(--muted)">
-            El código expira en 30 minutos.
-        </p>
+        <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border);text-align:center">
+            <p style="font-size:.85rem;color:var(--text2);margin-bottom:.8rem">
+                ¿No recibiste el código?
+            </p>
+            <form method="post" action="<?= BASE_URL ?>/inscribirse.php" style="display:inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="reenviar">
+                <button type="submit" class="btn btn-secondary">
+                    🔄 Reenviar código
+                </button>
+            </form>
+            <p style="margin-top:.8rem;font-size:.75rem;color:var(--muted)">
+                El código anterior expirará. El código expira en 30 minutos.
+            </p>
+        </div>
     </div>
 
 <?php else: ?>

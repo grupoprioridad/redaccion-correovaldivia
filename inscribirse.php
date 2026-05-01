@@ -204,7 +204,7 @@ if (isset($_GET['codigo'])) {
         
         <?php notificarFlash(); ?>
         
-        <form method="post" action="<?= BASE_URL ?>/inscribirse.php">
+        <form method="post" action="<?= BASE_URL ?>/inscribirse.php?codigo=1">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="verificar">
             <div class="codigo-input">
@@ -219,7 +219,7 @@ if (isset($_GET['codigo'])) {
             <p style="font-size:.85rem;color:var(--text2);margin-bottom:.8rem">
                 ¿No recibiste el código?
             </p>
-            <form method="post" action="<?= BASE_URL ?>/inscribirse.php" style="display:inline">
+            <form method="post" action="<?= BASE_URL ?>/inscribirse.php?codigo=1" style="display:inline">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="reenviar">
                 <input type="hidden" name="email" value="<?= e($email_verificando) ?>">

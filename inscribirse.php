@@ -50,7 +50,7 @@ if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST[
 // ── Paso 3: Reenviar código ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reenviar') {
     csrf_verify();
-    $email = $_SESSION['verificar_email'] ?? '';
+    $email = $_SESSION['verificar_email'] ?? $_POST['email'] ?? '';
     if (!empty($email)) {
         $codigo = generarCodigo();
         $db = getDB();
@@ -122,6 +122,7 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
             
             // Redirigir al paso de código
             header('Location: ' . BASE_URL . '/inscribirse.php?codigo=1&email=' . urlencode($email));
+            exit;
             exit;
 
         } catch (PDOException $e) {
@@ -220,6 +221,7 @@ if (isset($_GET['codigo'])) {
             <form method="post" action="<?= BASE_URL ?>/inscribirse.php" style="display:inline">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="reenviar">
+                <input type="hidden" name="email" value="<?= e($email_verificando) ?>">
                 <button type="submit" class="btn btn-secondary">
                     🔄 Reenviar código
                 </button>
@@ -285,7 +287,7 @@ if (isset($_GET['codigo'])) {
             <div class="form-row">
                 <div class="form-group">
                     <label for="tipo_cuenta">Tipo de cuenta</label>
-                    <select id="tipo_cuenta" name="tipo_cuenta">
+                    <select id="tipo_cuenta" name="tipo_cuenta" required>
                         <option value="">Seleccionar...</option>
                         <option value="Corriente" <?= ($_POST['tipo_cuenta']??'')==='Corriente'?'selected':'' ?>>Cuenta Corriente</option>
                         <option value="Vista" <?= ($_POST['tipo_cuenta']??'')==='Vista'?'selected':'' ?>>Cuenta Vista</option>
@@ -295,7 +297,7 @@ if (isset($_GET['codigo'])) {
                 </div>
                 <div class="form-group">
                     <label for="numero_cuenta">Número de cuenta</label>
-                    <input type="text" id="numero_cuenta" name="numero_cuenta" value="<?= e($_POST['numero_cuenta'] ?? '') ?>" placeholder="Ej: 123456789">
+                    <input type="text" id="numero_cuenta" name="numero_cuenta" required value="<?= e($_POST['numero_cuenta'] ?? '') ?>" placeholder="Ej: 123456789">
                 </div>
             </div>
         </div>
@@ -303,7 +305,7 @@ if (isset($_GET['codigo'])) {
         <div class="form-section" style="border-bottom:none">
             <h3>🎯 Temas de interés periodístico</h3>
             <p style="font-size:.8rem;color:var(--text2);margin-bottom:1rem;line-height:1.5">
-                Selecciona los temas que más te interesa cubrir.
+                Selecciona los temas que más te interesa cubrir (al menos uno).
             </p>
             <div class="checkbox-group" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem">
                 <?php

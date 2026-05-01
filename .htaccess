@@ -1,7 +1,17 @@
-# Bloquear acceso a archivos sensibles.
-<FilesMatch "(^\.|composer\.(json|lock)$|\.env$|\.git.*$|\.md$|\.log$)">
+RewriteEngine On
+
+# Ocultar extensión .php
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.*)$ $1.php [L]
+
+# Redirigir .php a sin extensión (SEO)
+RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+# Seguridad
+<FilesMatch "\.(inc|sql|md|log)$">
     Require all denied
 </FilesMatch>
 
-# Bloquear directory listing en raíz.
 Options -Indexes

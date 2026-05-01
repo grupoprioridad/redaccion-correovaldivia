@@ -39,6 +39,13 @@ $user = usuarioActual();
             <a href="<?= BASE_URL ?>/admin/categorias.php" class="<?= $current === 'categorias.php' ? 'active' : '' ?>">
                 🏷️ <span>Categorías</span>
             </a>
+            <div class="nav-section">IA</div>
+            <a href="<?= BASE_URL ?>/admin/proponer.php" class="<?= $current === 'proponer.php' ? 'active' : '' ?>">
+                💡 <span>Proponer Historias</span>
+            </a>
+            <a href="<?= BASE_URL ?>/admin/scraper-config.php" class="<?= $current === 'scraper-config.php' ? 'active' : '' ?>">
+                📡 <span>Scraper</span>
+            </a>
         </nav>
         <div class="user-info">
             <div class="name"><?= e($user['nombre']) ?></div>

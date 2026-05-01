@@ -11,7 +11,9 @@ $db = getDB();
 $categorias_disponibles = $db->query("SELECT id, nombre, descripcion FROM categorias_redaccion WHERE activo=1 ORDER BY nombre")->fetchAll();
 
 // ── Paso 2: Verificar código ──
-if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
+if (isset($_GET['verificado'])) {
+    $modo = 'verificado';
+} elseif (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verificar')) {
     $modo = 'codigo_enviado';
     $email_verificando = $_SESSION['verificar_email'] ?? ($_GET['email'] ?? '');
     if (!isset($_SESSION['csrf']) || empty($_SESSION['csrf'])) {
@@ -41,8 +43,8 @@ if (isset($_GET['codigo']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST[
                 $db->prepare("UPDATE usuarios SET email_verificado = 1 WHERE email = ? AND email_verificado = 0")->execute([$email]);
                 
                 $_SESSION['verificar_email'] = '';
-                $modo = 'verificado';
-                $success = '✅ Email verificado correctamente. Ahora el administrador revisará tu solicitud.';
+                header('Location: ' . BASE_URL . '/inscribirse.php?verificado=1');
+                exit;
             } else {
                 $error = 'Código inválido o expirado. Solicita uno nuevo.';
             }

@@ -56,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $categoria_id = !empty($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : null;
         $visible_todos = isset($_POST['visible_todos']) ? 1 : 0;
         $periodistas_sel = $_POST['periodistas'] ?? [];
+        $periodista_nuevo = !empty($_POST['periodista_asignado']) ? (int)$_POST['periodista_asignado'] : null;
         $estadosValidos = ['disponible','asignada','en_curso','entregada','revisada','pagada'];
         $estado = $_POST['estado'] ?? $h['estado'];
         if (!in_array($estado, $estadosValidos, true)) $estado = $h['estado'];
@@ -64,8 +65,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Título y fecha son obligatorios.');
         } else {
             $monto_total_a_pagar = isset($_POST['monto_total_a_pagar']) && $_POST['monto_total_a_pagar'] !== '' ? (int)$_POST['monto_total_a_pagar'] : $presupuesto;
-            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, monto_total_a_pagar=?, estado=?, categoria_id=?, visible_para_todos=? WHERE id=?")
-                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $estado, $categoria_id, $visible_todos, $id]);
+
+            $periodista_actual = $h['periodista_asignado'] ? (int)$h['periodista_asignado'] : null;
+            $asignada_en_sql = 'asignada_en';
+            $asignada_en_param = null;
+            $usar_param_asignada = false;
+            if ($periodista_nuevo !== $periodista_actual) {
+                if ($periodista_nuevo === null) {
+                    $asignada_en_sql = 'NULL';
+                    if ($estado === 'asignada') $estado = 'disponible';
+                } else {
+                    $asignada_en_sql = '?';
+                    $asignada_en_param = date('Y-m-d H:i:s');
+                    $usar_param_asignada = true;
+                    if ($estado === 'disponible') $estado = 'asignada';
+                }
+            }
+
+            $sql = "UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, monto_total_a_pagar=?, estado=?, categoria_id=?, visible_para_todos=?, periodista_asignado=?, asignada_en={$asignada_en_sql} WHERE id=?";
+            $params = [$tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $estado, $categoria_id, $visible_todos, $periodista_nuevo];
+            if ($usar_param_asignada) $params[] = $asignada_en_param;
+            $params[] = $id;
+            $db->prepare($sql)->execute($params);
 
             $db->prepare("DELETE FROM historia_visibilidad WHERE historia_id = ?")->execute([$id]);
             if (!$visible_todos && !empty($periodistas_sel)) {
@@ -186,7 +207,18 @@ $pag = $pago->fetch();
         </div>
 
         <div class="form-group">
-            <label>Visibilidad</label>
+            <label for="edit_periodista_asignado">Periodista asignado</label>
+            <select id="edit_periodista_asignado" name="periodista_asignado">
+                <option value="">— Sin asignar (disponible para tomar) —</option>
+                <?php foreach ($periodistas as $p): ?>
+                <option value="<?= $p['id'] ?>" <?= (int)$h['periodista_asignado']===(int)$p['id']?'selected':'' ?>><?= e($p['nombre']) ?> · <?= e($p['email']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="hint">Si asignas un periodista, la historia pasa a "asignada" automáticamente. Si lo quitas y estaba "asignada", vuelve a "disponible".</div>
+        </div>
+
+        <div class="form-group">
+            <label>Visibilidad (quién puede ver/tomar la historia si no está asignada)</label>
             <div class="checkbox-group">
                 <label class="checkbox-item">
                     <input type="checkbox" id="edit_visible_todos" name="visible_todos" value="1" <?= !empty($h['visible_para_todos']) ? 'checked' : '' ?> onchange="toggleEditPeriodistas(this)">
@@ -194,7 +226,7 @@ $pag = $pago->fetch();
                 </label>
             </div>
             <div id="edit-periodistas-select" style="<?= !empty($h['visible_para_todos']) ? 'display:none' : '' ?>">
-                <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Selecciona los periodistas que pueden ver esta historia:</p>
+                <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Si desmarcas "todos", elige aquí los periodistas que sí podrán verla:</p>
                 <?php foreach ($periodistas as $p): ?>
                 <label class="checkbox-item">
                     <input type="checkbox" name="periodistas[]" value="<?= $p['id'] ?>" <?= in_array((int)$p['id'], $visibilidad_actual, true) ? 'checked' : '' ?>>

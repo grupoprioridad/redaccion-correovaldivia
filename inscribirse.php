@@ -94,6 +94,7 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
     if (empty($password)) $errores[] = 'La contraseña es obligatoria.';
     if (strlen($password) < 8) $errores[] = 'La contraseña debe tener al menos 8 caracteres.';
     if ($password !== $password2) $errores[] = 'Las contraseñas no coinciden.';
+    if (empty($intereses)) $errores[] = 'Debes seleccionar al menos un tema de interés periodístico.';
     if (!$acepto_terminos) $errores[] = 'Debes aceptar las condiciones de funcionamiento, cesión de derechos y penalizaciones.';
 
     if (empty($errores)) {
@@ -269,11 +270,11 @@ if (isset($_GET['codigo'])) {
             <div class="form-row">
                 <div class="form-group">
                     <label for="rut">RUT / Carnet</label>
-                    <input type="text" id="rut" name="rut" value="<?= e($_POST['rut'] ?? '') ?>" placeholder="Ej: 12.345.678-9">
+                    <input type="text" id="rut" name="rut" required value="<?= e($_POST['rut'] ?? '') ?>" placeholder="Ej: 12.345.678-9">
                 </div>
                 <div class="form-group">
                     <label for="telefono">Teléfono</label>
-                    <input type="tel" id="telefono" name="telefono" value="<?= e($_POST['telefono'] ?? '') ?>" placeholder="+56 9 XXXX XXXX">
+                    <input type="tel" id="telefono" name="telefono" required value="<?= e($_POST['telefono'] ?? '') ?>" placeholder="+56 9 XXXX XXXX">
                 </div>
             </div>
         </div>
@@ -282,7 +283,7 @@ if (isset($_GET['codigo'])) {
             <h3>🏦 Datos bancarios (para pagos)</h3>
             <div class="form-group">
                 <label for="banco">Banco</label>
-                <input type="text" id="banco" name="banco" value="<?= e($_POST['banco'] ?? '') ?>" placeholder="Ej: Banco de Chile">
+                <input type="text" id="banco" name="banco" required value="<?= e($_POST['banco'] ?? '') ?>" placeholder="Ej: Banco de Chile">
             </div>
             <div class="form-row">
                 <div class="form-group">

@@ -1,5 +1,7 @@
 includes/config.php
 uploads/*
 !uploads/.gitkeep
+!uploads/.htaccess
+private/
 .DS_Store
 *.log

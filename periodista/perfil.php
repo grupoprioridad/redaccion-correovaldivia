@@ -7,6 +7,7 @@ $user_id = $_SESSION['usuario_id'];
 $user = usuarioActual();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $nombre = trim($_POST['nombre'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $rut = trim($_POST['rut'] ?? '');
@@ -14,21 +15,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $banco = trim($_POST['banco'] ?? '');
     $tipo_cuenta = trim($_POST['tipo_cuenta'] ?? '');
     $numero_cuenta = trim($_POST['numero_cuenta'] ?? '');
-    
+
+    if (empty($nombre) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        flash('error', 'Nombre y email válidos son obligatorios.');
+        header('Location: ' . BASE_URL . '/periodista/perfil.php');
+        exit;
+    }
+
     try {
         $stmt = $db->prepare("UPDATE usuarios SET nombre=?, email=?, rut=?, telefono=?, banco=?, tipo_cuenta=?, numero_cuenta=? WHERE id=?");
         $stmt->execute([$nombre, $email, $rut, $telefono, $banco, $tipo_cuenta, $numero_cuenta, $user_id]);
-        
-        // Actualizar sesión
+
         $_SESSION['usuario_nombre'] = $nombre;
-        $_SESSION['usuario']['nombre'] = $nombre;
-        $_SESSION['usuario']['email'] = $email;
-        
+
         flash('success', 'Perfil actualizado correctamente.');
     } catch (PDOException $e) {
         flash('error', 'El email ya está en uso.');
     }
-    
+
     header('Location: ' . BASE_URL . '/periodista/perfil.php');
     exit;
 }
@@ -58,6 +62,7 @@ $resumen_pagos = $pagos->fetch();
         <div class="perfil-avatar"><?= mb_substr($u['nombre'], 0, 1) ?></div>
         
         <form method="post">
+            <?= csrf_field() ?>
             <div class="form-row">
                 <div class="form-group">
                     <label>Nombre completo</label>

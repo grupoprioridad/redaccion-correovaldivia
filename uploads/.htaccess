@@ -1,0 +1,13 @@
+# No ejecutar PHP/CGI/scripts dentro de uploads.
+<FilesMatch "\.(php|phtml|phar|php3|php4|php5|php7|php8|pl|py|cgi|sh|asp|aspx|jsp)$">
+    Require all denied
+</FilesMatch>
+
+# Por si el servidor mapea handlers, forzar tipo seguro.
+<IfModule mod_mime.c>
+    RemoveHandler .php .phtml .phar .php3 .php4 .php5 .php7 .php8
+    RemoveType .php .phtml .phar
+</IfModule>
+
+# Bloquear directory listing.
+Options -Indexes

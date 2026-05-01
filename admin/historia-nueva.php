@@ -6,6 +6,7 @@ $db = getDB();
 $periodistas = $db->query("SELECT id, nombre, email FROM usuarios WHERE rol='periodista' AND activo=1 AND aprobado=1 ORDER BY nombre")->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $tit = trim($_POST['titulo'] ?? '');
     $desc = trim($_POST['descripcion'] ?? '');
     $foco = trim($_POST['foco'] ?? '');
@@ -42,20 +43,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $destinatarios = $destinatarios->fetchAll();
         }
         
-        $subject = "📢 Nueva historia disponible: {$tit}";
+        $subject = "Nueva historia disponible: " . preg_replace('/[\r\n]+/', ' ', mb_substr($tit, 0, 100));
+        $titSafe        = e($tit);
+        $descSafe       = nl2br(e(mb_substr($desc, 0, 200)));
+        $extSafe        = e($ext);
+        $presupuestoSafe = (int)$presupuesto;
+        $fechaSafe      = date('d/m/Y', strtotime($fecha));
+
         foreach ($destinatarios as $dest) {
+            $nombreSafe = e($dest['nombre']);
             $msg = "
             <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
                 <h2 style='color:#5e6ad2;margin-bottom:1rem'>📢 Nueva historia disponible</h2>
-                <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$dest['nombre']}</strong>,</p>
+                <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$nombreSafe}</strong>,</p>
                 <p style='color:#a0a4ab;line-height:1.6'>Se ha publicado una nueva historia en la plataforma de redacción de El Correo de Valdivia.</p>
                 <div style='background:#191a1c;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:1.2rem;margin:1rem 0'>
-                    <h3 style='color:#f7f8f8;font-size:1.05rem;margin-bottom:.5rem'>{$tit}</h3>
-                    <p style='color:#a0a4ab;font-size:.85rem;line-height:1.5'>" . nl2br(e(mb_substr($desc, 0, 200))) . "</p>
+                    <h3 style='color:#f7f8f8;font-size:1.05rem;margin-bottom:.5rem'>{$titSafe}</h3>
+                    <p style='color:#a0a4ab;font-size:.85rem;line-height:1.5'>{$descSafe}</p>
                     <div style='display:flex;gap:1rem;margin-top:.8rem;font-size:.8rem;color:#62666d'>
-                        <span>⏱ Entrega: " . date('d/m/Y', strtotime($fecha)) . "</span>
-                        <span>💰 \${$presupuesto}</span>
-                        <span>📄 {$ext}</span>
+                        <span>⏱ Entrega: {$fechaSafe}</span>
+                        <span>💰 \${$presupuestoSafe}</span>
+                        <span>📄 {$extSafe}</span>
                     </div>
                 </div>
                 <p style='margin:1.5rem 0'><a href='" . BASE_URL . "/periodista/index.php' style='display:inline-block;padding:12px 24px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px;font-size:.95rem'>Ver historias disponibles →</a></p>
@@ -78,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="card" style="max-width:700px">
     <form method="post">
+        <?= csrf_field() ?>
         <div class="form-group">
             <label for="titulo">Título de la historia *</label>
             <input type="text" id="titulo" name="titulo" required placeholder="Ej: El auge de la construcción en Valdivia" value="<?= e($_POST['titulo'] ?? '') ?>">

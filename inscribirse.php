@@ -1,11 +1,22 @@
 <?php
 require_once __DIR__ . '/includes/config.php';
+securityHeaders();
 
 $error = '';
 $success = '';
 $enviado = false;
 
+$errores = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+
+    $ip = clientIp();
+    if (!rateLimitOk('inscribir:' . $ip, 5, 3600)) {
+        $errores[] = 'Demasiadas inscripciones desde tu conexión. Intenta más tarde.';
+        $error = implode('<br>', array_map('e', $errores));
+        goto fin_post;
+    }
+
     $nombre = trim($_POST['nombre'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -18,17 +29,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $experiencia = trim($_POST['experiencia'] ?? '');
     $motivacion = trim($_POST['motivacion'] ?? '');
     $acepto_terminos = isset($_POST['acepto_terminos']) ? 1 : 0;
-    
+
     $errores = [];
-    
+
     if (empty($nombre)) $errores[] = 'El nombre es obligatorio.';
+    if (mb_strlen($nombre) > 120) $errores[] = 'El nombre es demasiado largo.';
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errores[] = 'Email válido es obligatorio.';
     if (empty($password)) $errores[] = 'La contraseña es obligatoria.';
-    if (strlen($password) < 6) $errores[] = 'La contraseña debe tener al menos 6 caracteres.';
+    if (strlen($password) < 8) $errores[] = 'La contraseña debe tener al menos 8 caracteres.';
     if ($password !== $password2) $errores[] = 'Las contraseñas no coinciden.';
     if (!$acepto_terminos) $errores[] = 'Debes aceptar los términos y condiciones.';
-    
+
     if (empty($errores)) {
+        rateLimitRecord('inscribir:' . $ip, 5, 3600);
         $db = getDB();
         $hash = password_hash($password, PASSWORD_DEFAULT);
         
@@ -44,13 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Notificar al admin
             $admin = $db->query("SELECT email, nombre FROM usuarios WHERE rol='admin' AND activo=1 LIMIT 1")->fetch();
             if ($admin) {
-                $subject = "✍️ Nuevo periodista inscrito: {$nombre}";
+                $subject = "Nuevo periodista inscrito: " . preg_replace('/[\r\n]+/', ' ', $nombre);
                 $msg = "
                 <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
                     <h2 style='color:#5e6ad2;margin-bottom:1rem'>✍️ Nueva inscripción de periodista</h2>
-                    <p style='color:#f7f8f8;margin-bottom:.5rem'><strong>{$nombre}</strong> se ha inscrito en la plataforma.</p>
+                    <p style='color:#f7f8f8;margin-bottom:.5rem'><strong>" . e($nombre) . "</strong> se ha inscrito en la plataforma.</p>
                     <table style='color:#a0a4ab;font-size:.9rem;line-height:1.8'>
-                        <tr><td style='padding-right:1rem;color:#62666d'>Email:</td><td>{$email}</td></tr>
+                        <tr><td style='padding-right:1rem;color:#62666d'>Email:</td><td>" . e($email) . "</td></tr>
                         <tr><td style='padding-right:1rem;color:#62666d'>RUT:</td><td>" . e($rut ?: '—') . "</td></tr>
                         <tr><td style='padding-right:1rem;color:#62666d'>Teléfono:</td><td>" . e($telefono ?: '—') . "</td></tr>
                         <tr><td style='padding-right:1rem;color:#62666d'>Banco:</td><td>" . e($banco ?: '—') . "</td></tr>
@@ -70,12 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($e->getCode() == 23000) {
                 $errores[] = 'Este email ya está registrado. ¿Ya te inscribiste antes?';
             } else {
+                error_log('Inscripción error: ' . $e->getMessage());
                 $errores[] = 'Error al registrar. Intenta de nuevo.';
             }
         }
     }
-    
-    $error = !empty($errores) ? implode('<br>', $errores) : '';
+
+    $error = !empty($errores) ? implode('<br>', array_map('e', $errores)) : '';
+    fin_post:
 }
 ?><!DOCTYPE html>
 <html lang="es">
@@ -184,8 +199,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($error): ?>
     <div class="alert alert-error"><?= $error ?></div>
     <?php endif; ?>
-    
+
     <form method="post">
+        <?= csrf_field() ?>
         <div class="form-section">
             <h3>📋 Datos personales</h3>
             <div class="form-row">

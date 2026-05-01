@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 requerirAdmin();
+securityHeaders();
 
 $current = basename($_SERVER['PHP_SELF']);
 $user = usuarioActual();

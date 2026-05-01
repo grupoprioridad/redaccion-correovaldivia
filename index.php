@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+securityHeaders();
 
 if (usuarioLogueado()) {
     if (esAdmin()) {
@@ -12,24 +13,34 @@ if (usuarioLogueado()) {
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
-    
-    if (empty($email) || empty($password)) {
-        $error = 'Ingresa tu email y contraseña.';
+    csrf_verify();
+
+    $ip = clientIp();
+    if (!rateLimitOk('login:' . $ip)) {
+        $error = 'Demasiados intentos. Espera unos minutos antes de volver a intentar.';
     } else {
-        $usuario = autenticar($email, $password);
-        if ($usuario === 'no_aprobado') {
-            $error = 'Tu cuenta está pendiente de aprobación por el administrador. Te avisaremos cuando esté activa.';
-        } elseif ($usuario) {
-            if ($usuario['rol'] === 'admin') {
-                header('Location: ' . BASE_URL . '/admin/index.php');
-            } else {
-                header('Location: ' . BASE_URL . '/periodista/index.php');
-            }
-            exit;
+        $email = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
+
+        if (empty($email) || empty($password)) {
+            $error = 'Ingresa tu email y contraseña.';
         } else {
-            $error = 'Email o contraseña incorrectos.';
+            $usuario = autenticar($email, $password);
+            if ($usuario === 'no_aprobado') {
+                $error = 'Tu cuenta está pendiente de aprobación por el administrador. Te avisaremos cuando esté activa.';
+                rateLimitRecord('login:' . $ip);
+            } elseif ($usuario) {
+                rateLimitClear('login:' . $ip);
+                if ($usuario['rol'] === 'admin') {
+                    header('Location: ' . BASE_URL . '/admin/index.php');
+                } else {
+                    header('Location: ' . BASE_URL . '/periodista/index.php');
+                }
+                exit;
+            } else {
+                rateLimitRecord('login:' . $ip);
+                $error = 'Email o contraseña incorrectos.';
+            }
         }
     }
 }
@@ -50,12 +61,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <h1>Redacción</h1>
     <p class="subtitle">Plataforma de control de historias</p>
-    
+
     <?php if ($error): ?>
         <div class="alert alert-error"><?= e($error) ?></div>
     <?php endif; ?>
-    
+
     <form method="post">
+        <?= csrf_field() ?>
         <div class="form-group">
             <label for="email">Email</label>
             <input type="email" id="email" name="email" placeholder="tu@email.cl" required autofocus>

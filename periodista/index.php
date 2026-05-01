@@ -180,6 +180,7 @@ function initials($str) {
                     <?php endif; ?>
                 </div>
                 <form method="post" action="<?= BASE_URL ?>/periodista/tomar.php" style="margin-top:auto">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="historia_id" value="<?= $h['id'] ?>">
                     <button type="submit" class="hc-btn hc-btn-primary hc-btn-full" onclick="return confirm('¿Tomar esta historia? El timing de entrega comenzará.')">Tomar Historia</button>
                 </form>

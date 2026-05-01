@@ -27,57 +27,67 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $contenido = $_POST['contenido'] ?? '';
+    csrf_verify();
+
+    $contenido_raw = (string)($_POST['contenido'] ?? '');
+    $contenido = sanitizarHTMLEntrega($contenido_raw);
     $imagenes_json = $_POST['imagenes_data'] ?? '[]';
     $firma_nombre = trim($_POST['firma_nombre'] ?? '');
     $firma_rut = trim($_POST['firma_rut'] ?? '');
     $firma_aceptacion = isset($_POST['firma_aceptacion']) ? 1 : 0;
-    
-    if (empty($contenido)) {
+
+    if (trim(strip_tags($contenido)) === '') {
         $error = 'Debes escribir el contenido de la historia.';
     } elseif (empty($firma_nombre) || empty($firma_rut)) {
         $error = 'Completa tu nombre y RUT para la cesión de derechos.';
     } elseif (!$firma_aceptacion) {
         $error = 'Debes aceptar la cesión de derechos para entregar.';
     } else {
-        // Guardar entrega
-        $imagenes = json_decode($imagenes_json, true) ?: [];
-        
+        $imagenes = json_decode($imagenes_json, true);
+        if (!is_array($imagenes)) $imagenes = [];
+        // Solo URLs propias (mismo origen) en imagenes
+        $imagenes = array_values(array_filter($imagenes, function($u) {
+            return is_string($u) && (str_starts_with($u, UPLOADS_URL . '/') || str_starts_with($u, BASE_URL . '/uploads/'));
+        }));
+
         $stmt = $db->prepare("INSERT INTO entregas (historia_id, periodista_id, contenido, imagenes) VALUES (?, ?, ?, ?)");
         $stmt->execute([$id, $user_id, $contenido, json_encode($imagenes)]);
         $entrega_id = $db->lastInsertId();
-        
-        // Generar PDF de cesión (simulado - guardamos datos)
+
+        // Nombre aleatorio para la cesión (no enumerable).
+        $token = bin2hex(random_bytes(16));
+        $pdf_filename = 'cesion-' . $entrega_id . '-' . $token . '.txt';
+
         $stmt_doc = $db->prepare("INSERT INTO documentos_cesion (entrega_id, historia_id, periodista_id, pdf_generado, pdf_path, firma_nombre, firma_rut, firma_aceptacion, fecha_firma) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())");
-        $pdf_path = 'cesiones/cesion-' . $entrega_id . '.txt';
-        $stmt_doc->execute([$entrega_id, $id, $user_id, 0, $pdf_path, $firma_nombre, $firma_rut]);
-        
-        // Guardar PDF de texto
-        $dir = UPLOADS_PATH . '/cesiones';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-        $pdf_content = "=== CESIÓN DE DERECHOS DE CONTENIDO ===\n\n";
+        $stmt_doc->execute([$entrega_id, $id, $user_id, 1, $pdf_filename, $firma_nombre, $firma_rut]);
+
+        // Guardar archivo de cesión FUERA del docroot (private/cesiones).
+        if (!is_dir(CESIONES_PATH)) @mkdir(CESIONES_PATH, 0750, true);
+        $pdf_content  = "=== CESION DE DERECHOS DE CONTENIDO ===\n\n";
         $pdf_content .= "Por la presente, yo, {$firma_nombre}, RUT {$firma_rut},\n";
-        $pdf_content .= "cedo los derechos del contenido titulado \"{$h['titulo']}\"\n";
-        $pdf_content .= "a El Correo de Valdivia, para su publicación y distribución.\n\n";
-        $pdf_content .= "Fecha de cesión: " . date('d/m/Y H:i') . "\n";
+        $pdf_content .= "cedo los derechos del contenido titulado \"" . str_replace('"', "'", $h['titulo']) . "\"\n";
+        $pdf_content .= "a El Correo de Valdivia, para su publicacion y distribucion.\n\n";
+        $pdf_content .= "Fecha de cesion: " . date('d/m/Y H:i') . "\n";
         $pdf_content .= "ID de entrega: {$entrega_id}\n\n";
         $pdf_content .= "Firmante: {$firma_nombre}\n";
         $pdf_content .= "RUT: {$firma_rut}\n";
-        $pdf_content .= "Aceptación digital: Sí\n";
-        file_put_contents($dir . '/cesion-' . $entrega_id . '.txt', $pdf_content);
-        
-        // Actualizar estado
+        $pdf_content .= "Aceptacion digital: Si\n";
+        file_put_contents(CESIONES_PATH . '/' . $pdf_filename, $pdf_content);
+        @chmod(CESIONES_PATH . '/' . $pdf_filename, 0640);
+
         $db->prepare("UPDATE historias SET estado = 'entregada' WHERE id = ?")->execute([$id]);
-        
-        // Notificar al admin
+
         $admin = $db->query("SELECT email FROM usuarios WHERE rol='admin' AND activo=1 LIMIT 1")->fetch();
         if ($admin) {
-            $subject = "📝 Entrega recibida: {$h['titulo']}";
-            $msg = "<p><strong>{$user['nombre']}</strong> ha entregado la historia <strong>{$h['titulo']}</strong>.</p>";
-            $msg .= "<p><a href='" . BASE_URL . "/admin/historia-editar.php?id={$id}'>Revisar entrega</a></p>";
+            $titSafe    = e($h['titulo']);
+            $nombreSafe = e($user['nombre']);
+            $idSafe     = (int)$id;
+            $subject = "Entrega recibida: " . preg_replace('/[\r\n]+/', ' ', mb_substr($h['titulo'], 0, 100));
+            $msg = "<p><strong>{$nombreSafe}</strong> ha entregado la historia <strong>{$titSafe}</strong>.</p>";
+            $msg .= "<p><a href='" . BASE_URL . "/admin/historia-editar.php?id={$idSafe}'>Revisar entrega</a></p>";
             enviarCorreo($admin['email'], $subject, $msg);
         }
-        
+
         flash('success', '✅ Historia entregada exitosamente. Cesión de derechos registrada.');
         header('Location: ' . BASE_URL . '/periodista/historia.php?id=' . $id);
         exit;
@@ -100,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php endif; ?>
 
 <form method="post" id="form-entrega">
+    <?= csrf_field() ?>
     <div class="card">
         <div class="card-header">
             <h2>📖 Contenido</h2>
@@ -220,14 +231,17 @@ quill.getModule('toolbar').addHandler('image', function() {
     input.onchange = async function() {
         const file = input.files[0];
         if (!file) return;
-        
+
         const formData = new FormData();
         formData.append('imagen', file);
-        
+        formData.append('_csrf', '<?= csrf_token() ?>');
+
         try {
             const res = await fetch('<?= BASE_URL ?>/periodista/subir-imagen.php', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': '<?= csrf_token() ?>' }
             });
             const data = await res.json();
             

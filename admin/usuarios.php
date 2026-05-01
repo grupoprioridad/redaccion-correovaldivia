@@ -5,17 +5,23 @@ require_once __DIR__ . '/header.php';
 $db = getDB();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $action = $_POST['action'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
-    
+
     if ($action === 'crear') {
         $nombre = trim($_POST['nombre'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
         $rol = $_POST['rol'] ?? 'periodista';
-        
+        if (!in_array($rol, ['admin', 'periodista'], true)) $rol = 'periodista';
+
         if (empty($nombre) || empty($email) || empty($password)) {
             flash('error', 'Todos los campos son obligatorios.');
+        } elseif (strlen($password) < 8) {
+            flash('error', 'La contraseña debe tener al menos 8 caracteres.');
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            flash('error', 'Email inválido.');
         } else {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             try {
@@ -32,45 +38,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($action === 'aprobar') {
         $db->prepare("UPDATE usuarios SET aprobado=1, activo=1, created_at_aprobacion=NOW() WHERE id=? AND rol='periodista'")->execute([$id]);
-        
-        // Enviar email de bienvenida al periodista aprobado
-        $user = $db->prepare("SELECT * FROM usuarios WHERE id=?");
+
+        $user = $db->prepare("SELECT id, nombre, email FROM usuarios WHERE id=?");
         $user->execute([$id]);
         $u = $user->fetch();
         if ($u) {
-            $subject = "✅ Has sido aprobado en El Correo de Valdivia";
+            $subject = "Has sido aprobado en El Correo de Valdivia";
+            $nombreSafe = e($u['nombre']);
+            $emailSafe  = e($u['email']);
             $msg = "
             <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
                 <h2 style='color:#5e6ad2;margin-bottom:1rem'>✅ ¡Bienvenido a la redacción!</h2>
-                <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$u['nombre']}</strong>,</p>
+                <p style='color:#f7f8f8;margin-bottom:1rem'>Hola <strong>{$nombreSafe}</strong>,</p>
                 <p style='color:#a0a4ab;line-height:1.6'>Tu solicitud de inscripción ha sido <strong style='color:#4ade80'>aprobada</strong>.<br>
                 Ya puedes ingresar a la plataforma de redacción de El Correo de Valdivia para ver las historias disponibles y comenzar a trabajar.</p>
                 <p style='margin:1.5rem 0'><a href='" . BASE_URL . "/index.php' style='display:inline-block;padding:12px 24px;background:#5e6ad2;color:#fff;text-decoration:none;border-radius:8px;font-size:.95rem'>Ingresar a la plataforma →</a></p>
                 <p style='color:#a0a4ab;font-size:.85rem;line-height:1.6'>Tus datos de acceso:<br>
-                Email: {$u['email']}<br>
+                Email: {$emailSafe}<br>
                 Contraseña: la que registraste al inscribirte.</p>
                 <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
                 <p style='font-size:.8rem;color:#62666d'>El Correo de Valdivia · Sistema de Redacción</p>
             </div>";
             enviarCorreo($u['email'], $subject, $msg);
         }
-        
+
         flash('success', 'Periodista aprobado y notificado por email.');
         header('Location: ' . BASE_URL . '/admin/usuarios.php');
         exit;
     }
-    
+
     if ($action === 'rechazar') {
         $db->prepare("UPDATE usuarios SET aprobado=0, activo=0 WHERE id=? AND rol='periodista'")->execute([$id]);
-        
-        $user = $db->prepare("SELECT * FROM usuarios WHERE id=?");
+
+        $user = $db->prepare("SELECT id, nombre, email FROM usuarios WHERE id=?");
         $user->execute([$id]);
         $u = $user->fetch();
         if ($u) {
             $subject = "Actualización sobre tu inscripción en El Correo de Valdivia";
+            $nombreSafe = e($u['nombre']);
             $msg = "
             <div style='font-family:sans-serif;max-width:600px;margin:0 auto;background:#111214;padding:2rem;border-radius:12px;border:1px solid rgba(255,255,255,0.08)'>
-                <p style='color:#a0a4ab;line-height:1.6'>Hola <strong>{$u['nombre']}</strong>,</p>
+                <p style='color:#a0a4ab;line-height:1.6'>Hola <strong>{$nombreSafe}</strong>,</p>
                 <p style='color:#a0a4ab;line-height:1.6'>Lamentamos informarte que tu solicitud de inscripción en El Correo de Valdivia no ha sido aprobada en esta ocasión.</p>
                 <p style='color:#a0a4ab;line-height:1.6'>Si tienes dudas, puedes contactarnos directamente.</p>
                 <hr style='border-color:rgba(255,255,255,0.08);margin:1.5rem 0'>
@@ -78,28 +86,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>";
             enviarCorreo($u['email'], $subject, $msg);
         }
-        
+
         flash('success', 'Solicitud rechazada.');
         header('Location: ' . BASE_URL . '/admin/usuarios.php');
         exit;
     }
-    
+
     if ($action === 'editar') {
         $nombre = trim($_POST['nombre'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $rol = $_POST['rol'] ?? 'periodista';
+        if (!in_array($rol, ['admin', 'periodista'], true)) $rol = 'periodista';
         $activo = isset($_POST['activo']) ? 1 : 0;
-        
-        $db->prepare("UPDATE usuarios SET nombre=?, email=?, rol=?, activo=? WHERE id=?")
-            ->execute([$nombre, $email, $rol, $activo, $id]);
-        flash('success', 'Usuario actualizado.');
+
+        // No permitir que el admin se desactive o pierda su rol a sí mismo.
+        if ($id === (int)($_SESSION['usuario_id'] ?? 0)) {
+            $rol = 'admin';
+            $activo = 1;
+        }
+
+        if (empty($nombre) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            flash('error', 'Datos inválidos.');
+        } else {
+            try {
+                $db->prepare("UPDATE usuarios SET nombre=?, email=?, rol=?, activo=? WHERE id=?")
+                    ->execute([$nombre, $email, $rol, $activo, $id]);
+                flash('success', 'Usuario actualizado.');
+            } catch (PDOException $e) {
+                flash('error', 'El email ya está en uso.');
+            }
+        }
         header('Location: ' . BASE_URL . '/admin/usuarios.php');
         exit;
     }
-    
+
     if ($action === 'cambiar_password') {
         $password = $_POST['password'] ?? '';
-        if (!empty($password)) {
+        if (strlen($password) < 8) {
+            flash('error', 'La contraseña debe tener al menos 8 caracteres.');
+        } else {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $db->prepare("UPDATE usuarios SET password=? WHERE id=?")->execute([$hash, $id]);
             flash('success', 'Contraseña actualizada.');
@@ -166,11 +191,13 @@ if ($editId) {
             </div>
             <div style="display:flex;gap:.5rem;flex-shrink:0">
                 <form method="post">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="aprobar">
                     <input type="hidden" name="id" value="<?= $p['id'] ?>">
                     <button type="submit" class="btn btn-success btn-sm">✅ Aprobar</button>
                 </form>
                 <form method="post" onsubmit="return confirm('¿Rechazar esta postulación?')">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="rechazar">
                     <input type="hidden" name="id" value="<?= $p['id'] ?>">
                     <button type="submit" class="btn btn-danger btn-sm">✕ Rechazar</button>
@@ -188,6 +215,7 @@ if ($editId) {
         <span style="cursor:pointer;color:var(--muted);font-size:1.2rem" onclick="this.closest('.card').style.display='none'">✕</span>
     </div>
     <form method="post">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="crear">
         <div class="form-row">
             <div class="form-group">
@@ -223,6 +251,7 @@ if ($editId) {
         <a href="<?= BASE_URL ?>/admin/usuarios.php" style="font-size:.8rem">✕ Cerrar</a>
     </div>
     <form method="post">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="editar">
         <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
         <div class="form-row">
@@ -265,12 +294,13 @@ if ($editId) {
     
     <h3 style="font-size:.9rem;margin-bottom:.8rem">Cambiar Contraseña</h3>
     <form method="post">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="cambiar_password">
         <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
         <div class="form-row">
             <div class="form-group">
                 <label>Nueva contraseña</label>
-                <input type="password" name="password" required minlength="6">
+                <input type="password" name="password" required minlength="8">
             </div>
         </div>
         <button type="submit" class="btn btn-warning btn-sm">Actualizar Contraseña</button>
@@ -321,6 +351,7 @@ if ($editId) {
                         <a href="<?= BASE_URL ?>/admin/usuarios.php?edit=<?= $u['id'] ?>" class="btn btn-secondary btn-xs">Editar</a>
                         <?php if ($u['rol']==='periodista' && !$u['aprobado']): ?>
                         <form method="post" style="display:inline">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="action" value="aprobar">
                             <input type="hidden" name="id" value="<?= $u['id'] ?>">
                             <button type="submit" class="btn btn-success btn-xs">Aprobar</button>

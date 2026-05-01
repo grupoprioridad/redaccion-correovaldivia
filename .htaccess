@@ -1,0 +1,7 @@
+# Bloquear acceso a archivos sensibles.
+<FilesMatch "(^\.|composer\.(json|lock)$|\.env$|\.git.*$|\.md$|\.log$)">
+    Require all denied
+</FilesMatch>
+
+# Bloquear directory listing en raíz.
+Options -Indexes

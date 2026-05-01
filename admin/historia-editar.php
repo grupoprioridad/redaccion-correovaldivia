@@ -23,12 +23,13 @@ if (!$h) {
 
 // Acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $action = $_POST['action'] ?? '';
-    
+
     if ($action === 'revisar') {
         $estado = $_POST['estado'] ?? '';
         $notas = trim($_POST['notas'] ?? '');
-        if (in_array($estado, ['aprobado', 'rechazado'])) {
+        if (in_array($estado, ['aprobado', 'rechazado'], true)) {
             $nuevo_estado = $estado === 'aprobado' ? 'revisada' : 'entregada';
             $db->prepare("UPDATE entregas SET estado=?, notas_revision=?, revisado_por=? WHERE historia_id=? AND estado='pendiente_revision'")->execute([$estado, $notas, $_SESSION['usuario_id'], $id]);
             $db->prepare("UPDATE historias SET estado=? WHERE id=?")->execute([$nuevo_estado, $id]);
@@ -37,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     }
-    
+
     if ($action === 'editar') {
         $tit = trim($_POST['titulo'] ?? '');
         $desc = trim($_POST['descripcion'] ?? '');
@@ -45,21 +46,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ext = trim($_POST['extension'] ?? '');
         $fecha = $_POST['fecha_entrega'] ?? '';
         $presupuesto = (int)($_POST['presupuesto'] ?? 0);
+        $estadosValidos = ['disponible','asignada','en_curso','entregada','revisada','pagada'];
         $estado = $_POST['estado'] ?? $h['estado'];
-        
-        $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, estado=? WHERE id=?")
-            ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $estado, $id]);
-        flash('success', 'Historia actualizada.');
+        if (!in_array($estado, $estadosValidos, true)) $estado = $h['estado'];
+
+        if (empty($tit) || empty($fecha)) {
+            flash('error', 'Título y fecha son obligatorios.');
+        } else {
+            $db->prepare("UPDATE historias SET titulo=?, descripcion=?, foco_periodistico=?, extension_esperada=?, fecha_entrega=?, presupuesto=?, estado=? WHERE id=?")
+                ->execute([$tit, $desc, $foco, $ext, $fecha, $presupuesto, $estado, $id]);
+            flash('success', 'Historia actualizada.');
+        }
         header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
         exit;
     }
-    
+
     if ($action === 'marcar_pagado') {
-        $monto_total = (int)($h['presupuesto']);
-        $retencion = (int)($_POST['retencion'] ?? 0);
+        if ($h['estado'] !== 'revisada' || !$h['periodista_asignado']) {
+            flash('error', 'La historia no está en estado para pagar.');
+            header('Location: ' . BASE_URL . '/admin/historia-editar.php?id=' . $id);
+            exit;
+        }
+        $monto_total = (int)$h['presupuesto'];
+        $retencion = max(0, min($monto_total, (int)($_POST['retencion'] ?? 0)));
         $honorarios = $monto_total - $retencion;
         $liquido = $honorarios;
-        
+
         $db->prepare("INSERT INTO pagos (historia_id, periodista_id, monto_total, honorarios, retencion, liquido, estado, fecha_pago) VALUES (?,?,?,?,?,?,'pagado',NOW())")
             ->execute([$id, $h['periodista_asignado'], $monto_total, $honorarios, $retencion, $liquido]);
         $db->prepare("UPDATE historias SET estado='pagada' WHERE id=?")->execute([$id]);
@@ -165,6 +177,7 @@ $pag = $pago->fetch();
         <div class="card">
             <div class="card-header"><h2>💰 Registrar Pago</h2></div>
             <form method="post">
+                <?= csrf_field() ?>
                 <input type="hidden" name="action" value="marcar_pagado">
                 <div class="form-group">
                     <label>Monto total</label>
@@ -187,11 +200,12 @@ $pag = $pago->fetch();
                 <span class="badge badge-pendiente_revision">Pendiente</span>
             </div>
             <form method="post">
+                <?= csrf_field() ?>
                 <input type="hidden" name="action" value="revisar">
                 <div style="margin-bottom:.8rem">
                     <a href="#" onclick="verEntrega(event, <?= $id ?>)" class="btn btn-secondary btn-sm">📖 Ver contenido</a>
                     <?php if ($doc && $doc['pdf_generado']): ?>
-                    <a href="<?= urlImagen($doc['pdf_path']) ?>" target="_blank" class="btn btn-secondary btn-sm">📄 Ver cesión</a>
+                    <a href="<?= BASE_URL ?>/admin/cesion.php?id=<?= (int)$doc['id'] ?>" target="_blank" class="btn btn-secondary btn-sm">📄 Ver cesión</a>
                     <?php endif; ?>
                 </div>
                 <div class="form-group">
@@ -218,7 +232,7 @@ $pag = $pago->fetch();
         <span class="badge badge-<?= $ent['estado'] ?>"><?= $ent['estado'] ?></span>
     </div>
     <div style="line-height:1.8;font-size:.95rem;color:var(--text2)">
-        <?= $ent['contenido'] ?>
+        <?= sanitizarHTMLEntrega($ent['contenido'] ?? '') ?>
     </div>
     <?php if ($ent['estado'] === 'pendiente_revision'): ?>
     <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">

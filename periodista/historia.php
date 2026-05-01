@@ -131,7 +131,7 @@ $pag = $pago->fetch();
         <span class="badge badge-<?= $ent['estado'] ?>"><?= $ent['estado'] ?></span>
     </div>
     <div style="line-height:1.8;font-size:.95rem;color:var(--text2)">
-        <?= $ent['contenido'] ?>
+        <?= sanitizarHTMLEntrega($ent['contenido'] ?? '') ?>
     </div>
     <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted)">
         Entregado el <?= date('d/m/Y H:i', strtotime($ent['fecha_entrega'])) ?>

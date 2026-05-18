@@ -77,6 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $db->prepare("UPDATE historias SET estado = 'entregada' WHERE id = ?")->execute([$id]);
 
+        // Eliminar borrador guardado
+        try {
+            $db->prepare("DELETE FROM borradores WHERE historia_id=? AND periodista_id=?")->execute([$id, $user_id]);
+        } catch (Throwable $e) {}
+
         $admin = $db->query("SELECT email FROM usuarios WHERE rol='admin' AND activo=1 LIMIT 1")->fetch();
         if ($admin) {
             $titSafe    = e($h['titulo']);
@@ -93,6 +98,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 }
+
+// Cargar borrador guardado (si existe)
+$borrador = null;
+try {
+    $borrStmt = $db->prepare("SELECT contenido, imagenes, updated_at FROM borradores WHERE historia_id=? AND periodista_id=?");
+    $borrStmt->execute([$id, $user_id]);
+    $borrador = $borrStmt->fetch();
+} catch (Throwable $e) {
+    // Tabla no existe aún; el primer auto-guardado la creará
+}
 ?>
 
 <div class="page-header">
@@ -107,6 +122,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <?php if ($error): ?>
 <div class="alert alert-error"><?= e($error) ?></div>
+<?php endif; ?>
+
+<?php if ($borrador && trim(strip_tags($borrador['contenido'])) !== ''): ?>
+<div id="borrador-banner" class="alert alert-info" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+    <span>Borrador recuperado — guardado el <?= date('d/m/Y H:i', strtotime($borrador['updated_at'])) ?>. Tu trabajo fue restaurado automáticamente.</span>
+    <button type="button" onclick="descartarBorrador()" style="background:none;border:1px solid currentColor;padding:.25rem .75rem;border-radius:6px;cursor:pointer;color:inherit;font-size:.8rem;white-space:nowrap">Descartar y empezar de cero</button>
+</div>
 <?php endif; ?>
 
 <form method="post" id="form-entrega">
@@ -151,9 +173,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div id="editor" style="min-height:400px"></div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:.5rem;min-height:1.6rem">
+            <button type="button" id="btn-add-foto" class="btn btn-secondary btn-sm" onclick="triggerUploadImage()">
+                🖼️ Agregar foto
+            </button>
+            <span id="autosave-indicator" style="font-size:.75rem;color:var(--muted);opacity:0;transition:opacity .6s"></span>
+        </div>
         <textarea name="contenido" id="contenido-html" style="display:none"></textarea>
-        <input type="hidden" name="imagenes_data" id="imagenes-data" value="[]">
-        
+        <input type="hidden" name="imagenes_data" id="imagenes-data" value="<?= e(is_array($borrador) ? ($borrador['imagenes'] ?? '[]') : '[]') ?>">
+
         <div id="image-preview" style="margin-top:1rem;display:none">
             <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">🖼️ Imágenes subidas:</p>
             <div id="image-list" style="display:flex;gap:.5rem;flex-wrap:wrap"></div>
@@ -215,69 +243,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script>
 const quill = new Quill('#editor', {
     theme: 'snow',
-    modules: {
-        toolbar: '#toolbar'
-    },
+    modules: { toolbar: '#toolbar' },
     placeholder: 'Escribe tu historia aquí... Puedes agregar imágenes, enlaces y formato.'
 });
 
-// Subida de imágenes personalizada
-quill.getModule('toolbar').addHandler('image', function() {
-    const input = document.createElement('input');
-    input.setAttribute('type', 'file');
-    input.setAttribute('accept', 'image/*');
-    input.click();
-    
-    input.onchange = async function() {
-        const file = input.files[0];
-        if (!file) return;
+<?php if ($borrador && trim(strip_tags($borrador['contenido'])) !== ''): ?>
+quill.root.innerHTML = <?= json_encode($borrador['contenido']) ?>;
+<?php endif; ?>
 
-        const formData = new FormData();
-        formData.append('imagen', file);
-        formData.append('_csrf', '<?= csrf_token() ?>');
+// Token CSRF actualizable (se renueva con cada auto-guardado)
+let csrfToken = '<?= csrf_token() ?>';
+const historiaId = <?= $id ?>;
 
-        try {
-            const res = await fetch('<?= BASE_URL ?>/periodista/subir-imagen.php', {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-Token': '<?= csrf_token() ?>' }
-            });
-            const data = await res.json();
-            
-            if (data.url) {
-                const range = quill.getSelection(true);
-                quill.insertEmbed(range.index, 'image', data.url);
-                
-                // Track images
-                const input = document.getElementById('imagenes-data');
-                const images = JSON.parse(input.value || '[]');
-                images.push(data.url);
-                input.value = JSON.stringify(images);
-                
-                // Show preview
-                showImagePreview();
-            } else {
-                alert('Error al subir la imagen: ' + (data.error || 'desconocido'));
-            }
-        } catch(e) {
-            alert('Error de conexión al subir la imagen');
-        }
-    };
-});
+function updateCsrf(token) {
+    csrfToken = token;
+    const f = document.querySelector('input[name="_csrf"]');
+    if (f) f.value = token;
+}
+
+// --- Subida de imágenes ---
+function trackImage(url) {
+    const inp = document.getElementById('imagenes-data');
+    const imgs = JSON.parse(inp.value || '[]');
+    if (!imgs.includes(url)) { imgs.push(url); inp.value = JSON.stringify(imgs); }
+}
 
 function showImagePreview() {
-    const images = JSON.parse(document.getElementById('imagenes-data').value || '[]');
+    const imgs = JSON.parse(document.getElementById('imagenes-data').value || '[]');
     const container = document.getElementById('image-preview');
     const list = document.getElementById('image-list');
-    
-    if (images.length === 0) {
-        container.style.display = 'none';
-        return;
-    }
-    
+    if (imgs.length === 0) { container.style.display = 'none'; return; }
     container.style.display = 'block';
-    list.innerHTML = images.map((url, i) => 
+    list.innerHTML = imgs.map((url, i) =>
         `<div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
             <img src="${url}" style="width:100%;height:100%;object-fit:cover">
             <span style="position:absolute;bottom:2px;right:2px;font-size:.6rem;background:rgba(0,0,0,.7);padding:1px 5px;border-radius:4px;color:#fff">${i+1}</span>
@@ -285,20 +282,112 @@ function showImagePreview() {
     ).join('');
 }
 
-// Submit handler
-document.getElementById('form-entrega').onsubmit = function() {
+async function doUploadImage(file) {
+    const fd = new FormData();
+    fd.append('imagen', file);
+    fd.append('_csrf', csrfToken);
+    try {
+        const res = await fetch('<?= BASE_URL ?>/periodista/subir-imagen.php', {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': csrfToken }
+        });
+        const data = await res.json();
+        if (data.url) {
+            const range = quill.getSelection(true);
+            quill.insertEmbed(range.index, 'image', data.url);
+            trackImage(data.url);
+            showImagePreview();
+        } else {
+            alert('Error al subir la imagen: ' + (data.error || 'desconocido'));
+        }
+    } catch(e) {
+        alert('Error de conexión al subir la imagen. Verifica tu conexión e intenta de nuevo.');
+    }
+}
+
+function triggerUploadImage() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.click();
+    input.onchange = function() { if (input.files[0]) doUploadImage(input.files[0]); };
+}
+
+quill.getModule('toolbar').addHandler('image', triggerUploadImage);
+
+// Mostrar preview de imágenes del borrador recuperado
+showImagePreview();
+
+// --- Auto-guardado cada 30 segundos (también mantiene la sesión viva) ---
+let lastSaved = quill.root.innerHTML;
+
+async function autoSave() {
     const html = quill.root.innerHTML;
-    document.getElementById('contenido-html').value = html;
-    
+    const imgs = document.getElementById('imagenes-data').value;
+    const fd = new FormData();
+    fd.append('_csrf', csrfToken);
+    fd.append('historia_id', historiaId);
+    fd.append('contenido', html);
+    fd.append('imagenes', imgs);
+    try {
+        const res = await fetch('<?= BASE_URL ?>/periodista/borrador.php', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (data.csrf) updateCsrf(data.csrf);
+            if (html !== lastSaved) {
+                lastSaved = html;
+                const el = document.getElementById('autosave-indicator');
+                if (el) {
+                    el.textContent = 'Guardado ' + new Date().toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+                    el.style.opacity = '1';
+                    setTimeout(() => { el.style.opacity = '0'; }, 3000);
+                }
+            }
+        }
+    } catch(e) {}
+}
+
+setInterval(autoSave, 30000);
+
+// --- Descartar borrador ---
+async function descartarBorrador() {
+    if (!confirm('¿Descartar el borrador y empezar desde cero?')) return;
+    try {
+        const fd = new FormData();
+        fd.append('_csrf', csrfToken);
+        fd.append('historia_id', historiaId);
+        fd.append('action', 'delete');
+        await fetch('<?= BASE_URL ?>/periodista/borrador.php', {method:'POST', body:fd, credentials:'same-origin'});
+    } catch(e) {}
+    quill.setText('');
+    document.getElementById('imagenes-data').value = '[]';
+    showImagePreview();
+    const banner = document.getElementById('borrador-banner');
+    if (banner) banner.remove();
+}
+
+// --- Submit: elimina borrador y envía el formulario ---
+document.getElementById('form-entrega').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    document.getElementById('contenido-html').value = quill.root.innerHTML;
     const btn = document.getElementById('btn-entregar');
     btn.disabled = true;
     btn.textContent = '⏳ Enviando...';
-    return true;
-};
+    // Borrar borrador antes de enviar (best-effort)
+    try {
+        const fd = new FormData();
+        fd.append('_csrf', csrfToken);
+        fd.append('historia_id', historiaId);
+        fd.append('action', 'delete');
+        await fetch('<?= BASE_URL ?>/periodista/borrador.php', {method:'POST', body:fd, credentials:'same-origin'});
+    } catch(e) {}
+    this.submit();
+});
 </script>
 
 <style>
-/* Override Quill image styles for dark theme */
 .ql-editor img { max-width: 100%; border-radius: 8px; margin: 1rem 0; }
 </style>
 

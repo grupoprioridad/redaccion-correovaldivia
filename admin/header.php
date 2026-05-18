@@ -33,6 +33,12 @@ $user = usuarioActual();
             <a href="<?= BASE_URL ?>/admin/usuarios.php" class="<?= str_contains($current, 'usuario') ? 'active' : '' ?>">
                 👥 <span>Usuarios</span>
             </a>
+            <a href="<?= BASE_URL ?>/admin/suscriptores.php" class="<?= $current === 'suscriptores.php' ? 'active' : '' ?>">
+                📧 <span>Suscriptores</span>
+            </a>
+            <a href="<?= BASE_URL ?>/admin/denuncias.php" class="<?= $current === 'denuncias.php' ? 'active' : '' ?>">
+                🔒 <span>Denuncias</span>
+            </a>
             <a href="<?= BASE_URL ?>/admin/pagos.php" class="<?= $current === 'pagos.php' ? 'active' : '' ?>">
                 💰 <span>Pagos</span>
             </a>
@@ -45,6 +51,13 @@ $user = usuarioActual();
             </a>
             <a href="<?= BASE_URL ?>/admin/scraper-config.php" class="<?= $current === 'scraper-config.php' ? 'active' : '' ?>">
                 📡 <span>Scraper</span>
+            </a>
+            <div class="nav-section">Publicación</div>
+            <a href="<?= BASE_URL ?>/admin/wordpress.php" class="<?= $current === 'wordpress.php' ? 'active' : '' ?>">
+                🌐 <span>WordPress</span>
+            </a>
+            <a href="<?= BASE_URL ?>/admin/enviar-articulo.php" class="<?= $current === 'enviar-articulo.php' ? 'active' : '' ?>">
+                ✉ <span>Enviar artículo</span>
             </a>
         </nav>
         <div class="user-info">

@@ -65,21 +65,6 @@ $pag = $pago->fetch();
     </div>
 </div>
 
-<?php if ($h['asignada_en'] && $h['estado'] !== 'pagada'): ?>
-<div class="card" style="margin-bottom:1.2rem">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <span style="font-size:.8rem;color:var(--muted)">Progreso del plazo</span>
-        <span style="font-size:.8rem;color:var(--text2)"><?= $dias_restantes ?> días restantes</span>
-    </div>
-    <div style="height:6px;background:var(--surface2);border-radius:99px;overflow:hidden">
-        <div style="height:100%;width:<?= $porcentaje ?>%;background:<?= $porcentaje > 80 ? 'var(--error)' : ($porcentaje > 50 ? 'var(--warning)' : 'var(--accent)') ?>;border-radius:99px;transition:width .5s"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:.3rem">
-        <span>Inicio: <?= date('d/m/Y', strtotime($h['asignada_en'])) ?></span>
-        <span>Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
-    </div>
-</div>
-<?php endif; ?>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
     <div class="card">
@@ -112,6 +97,31 @@ $pag = $pago->fetch();
             <span class="detail-label">Fecha entrega</span>
             <span class="detail-value"><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
         </div>
+        <?php if ($h['asignada_en']):
+            $terminada = in_array($h['estado'], ['revisada','pagada']);
+            $col = $terminada ? '#5e6ad2' : ($porcentaje >= 100 ? '#ef4444' : ($porcentaje >= 80 ? '#ef4444' : ($porcentaje >= 50 ? '#f59e0b' : '#27a644')));
+            $lbl = $terminada ? ucfirst($h['estado'])
+                 : ($porcentaje >= 100 ? 'Vencida'
+                 : $dias_restantes . ' día' . ($dias_restantes !== 1 ? 's' : '') . ' restantes');
+        ?>
+        <div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+            <span class="detail-label">Avance del plazo</span>
+            <div style="width:100%">
+                <div style="background:rgba(0,0,0,.3);border-radius:6px;height:8px;overflow:hidden;margin-bottom:.35rem">
+                    <div style="width:<?= $porcentaje ?>%;height:100%;background:<?= $col ?>;border-radius:6px;transition:width .4s<?= (!$terminada && $porcentaje >= 100) ? ';animation:pulseBar 1.4s ease-in-out infinite' : '' ?>"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:.72rem;font-weight:600;color:<?= $col ?>"><?= e($lbl) ?></span>
+                    <span style="font-size:.68rem;color:var(--muted)"><?= $porcentaje ?>% del plazo</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:.25rem">
+                    <span>Inicio: <?= date('d/m/Y', strtotime($h['asignada_en'])) ?></span>
+                    <span>Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
+                </div>
+            </div>
+        </div>
+        <style>@keyframes pulseBar{0%,100%{opacity:1}50%{opacity:.4}}</style>
+        <?php endif; ?>
         <div class="detail-row">
             <span class="detail-label">Estado</span>
             <span class="detail-value"><span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span></span>

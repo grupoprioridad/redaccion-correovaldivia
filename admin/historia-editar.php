@@ -41,6 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare("UPDATE entregas SET estado=?, notas_revision=?, revisado_por=? WHERE historia_id=? AND estado='pendiente_revision'")->execute([$estado, $notas, $_SESSION['usuario_id'], $id]);
             $db->prepare("UPDATE historias SET estado=? WHERE id=?")->execute([$nuevo_estado, $id]);
             flash('success', 'Historia ' . ($estado === 'aprobado' ? 'aprobada' : 'rechazada') . '.');
+
+            if ($estado === 'aprobado') {
+                require_once ROOT_PATH . '/includes/wordpress-export.php';
+                $res_wp = wp_exportar_entrega($id, $db);
+                if ($res_wp['ok']) {
+                    flash('info', 'WordPress: ' . $res_wp['mensaje']);
+                } elseif ($res_wp['mensaje'] !== 'Exportación a WordPress desactivada.') {
+                    flash('warning', 'WordPress: ' . $res_wp['mensaje']);
+                }
+            }
+
             header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
             exit;
         }
@@ -112,9 +123,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         $monto_total = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
-        $retencion = max(0, min($monto_total, (int)($_POST['retencion'] ?? 0)));
-        $honorarios = $monto_total - $retencion;
-        $liquido = $honorarios;
+        $retencion   = (int)round($monto_total * 0.1525); // 15,25% fijo
+        $honorarios  = $monto_total;
+        $liquido     = $monto_total - $retencion;
 
         $db->prepare("INSERT INTO pagos (historia_id, periodista_id, monto_total, honorarios, retencion, liquido, estado, fecha_pago) VALUES (?,?,?,?,?,?,'pagado',NOW())")
             ->execute([$id, $h['periodista_asignado'], $monto_total, $honorarios, $retencion, $liquido]);
@@ -362,6 +373,34 @@ function toggleEdit() {
             <span class="detail-label">Fecha entrega</span>
             <span class="detail-value"><?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
         </div>
+        <?php if ($h['asignada_en'] && !in_array($h['estado'], ['disponible'])):
+            $ini  = strtotime($h['asignada_en']);
+            $dead = strtotime($h['fecha_entrega'] . ' 23:59:59');
+            $now  = time();
+            $pct  = (int)min(100, max(0, round(($now - $ini) / max(1, $dead - $ini) * 100)));
+            $dias = (int)ceil(($dead - $now) / 86400);
+            $terminada = in_array($h['estado'], ['revisada','pagada']);
+            if ($terminada)    { $col = '#5e6ad2'; $lbl = ucfirst($h['estado']); }
+            elseif ($h['estado'] === 'entregada') { $col = '#27a644'; $lbl = 'Entregada a tiempo'; }
+            elseif ($pct >= 100) { $col = '#ef4444'; $lbl = abs($dias) . ' día' . (abs($dias)!==1?'s':'') . ' vencida'; }
+            elseif ($pct >= 85)  { $col = '#ef4444'; $lbl = $dias . ' día' . ($dias!==1?'s':'') . ' restantes'; }
+            elseif ($pct >= 60)  { $col = '#f59e0b'; $lbl = $dias . ' día' . ($dias!==1?'s':'') . ' restantes'; }
+            else                 { $col = '#27a644'; $lbl = $dias . ' día' . ($dias!==1?'s':'') . ' restantes'; }
+        ?>
+        <div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+            <span class="detail-label">Avance del plazo</span>
+            <div style="width:100%">
+                <div style="background:rgba(0,0,0,.3);border-radius:6px;height:8px;overflow:hidden;margin-bottom:.35rem">
+                    <div style="width:<?= $pct ?>%;height:100%;background:<?= $col ?>;border-radius:6px;transition:width .4s<?= (!$terminada && $pct>=100) ? ';animation:pulseBar 1.4s ease-in-out infinite' : '' ?>"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:.72rem;font-weight:600;color:<?= $col ?>"><?= e($lbl) ?></span>
+                    <span style="font-size:.68rem;color:var(--muted)"><?= $pct ?>% del plazo</span>
+                </div>
+            </div>
+        </div>
+        <style>@keyframes pulseBar{0%,100%{opacity:1}50%{opacity:.4}}</style>
+        <?php endif; ?>
         <div class="detail-row">
             <span class="detail-label">Presupuesto estimado</span>
             <span class="detail-value">$<?= number_format($h['presupuesto'], 0, ',', '.') ?></span>
@@ -410,19 +449,32 @@ function toggleEdit() {
         <?php elseif ($h['estado'] === 'revisada' && $h['periodista_asignado']): ?>
         <div class="card">
             <div class="card-header"><h2>💰 Registrar Pago</h2></div>
+            <?php
+                $mt  = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
+                $ret = (int)round($mt * 0.1525);
+                $liq = $mt - $ret;
+            ?>
             <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="marcar_pagado">
+
                 <div class="form-group">
-                    <label>Monto total</label>
-                    <input type="text" value="$<?= number_format($h['monto_total_a_pagar'] ?? $h['presupuesto'], 0, ',', '.') ?>" disabled>
+                    <label>Monto total bruto</label>
+                    <input type="text" value="$<?= number_format($mt, 0, ',', '.') ?>" disabled>
                 </div>
                 <div class="form-group">
-                    <label for="retencion">Retención ($)</label>
-                    <input type="number" id="retencion" name="retencion" value="0" min="0">
-                    <div class="hint">Monto a retener (ej: retención de renta).</div>
+                    <label>Retención 15,25%</label>
+                    <input type="text" value="$<?= number_format($ret, 0, ',', '.') ?>" disabled style="color:var(--error)">
+                    <div class="hint">Calculada automáticamente sobre el monto total.</div>
                 </div>
-                <button type="submit" class="btn btn-success">✓ Marcar como Pagado</button>
+                <div class="form-group">
+                    <label>Líquido a pagar</label>
+                    <input type="text" value="$<?= number_format($liq, 0, ',', '.') ?>" disabled style="color:var(--success);font-weight:600;font-size:1.1rem">
+                </div>
+                <button type="submit" class="btn btn-success"
+                        onclick="return confirm('¿Registrar pago de $<?= number_format($liq, 0, ',', '.') ?> líquido a <?= e(addslashes($h['periodista_nombre'] ?? '')) ?>?')">
+                    ✓ Marcar como Pagado
+                </button>
             </form>
         </div>
         <?php endif; ?>

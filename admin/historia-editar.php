@@ -142,6 +142,28 @@ if ($ent) {
 $pago = $db->prepare("SELECT * FROM pagos WHERE historia_id = ? ORDER BY created_at DESC LIMIT 1");
 $pago->execute([$id]);
 $pag = $pago->fetch();
+
+// Progreso del plazo
+$dias_total = 0;
+$dias_restantes = 0;
+$dias_transcurridos = 0;
+$porcentaje = 0;
+$vencida = false;
+if ($h['asignada_en'] && $h['fecha_entrega']) {
+    $inicio = new DateTime($h['asignada_en']);
+    $entrega_dt = new DateTime($h['fecha_entrega']);
+    $ahora = new DateTime();
+    $dias_total = max(1, $inicio->diff($entrega_dt)->days);
+    $dias_transcurridos = max(0, $inicio->diff($ahora)->days);
+    if ($ahora > $entrega_dt) {
+        $vencida = true;
+        $dias_restantes = 0;
+        $porcentaje = 100;
+    } else {
+        $dias_restantes = max(0, $dias_total - $dias_transcurridos);
+        $porcentaje = min(100, round(($dias_transcurridos / $dias_total) * 100));
+    }
+}
 ?>
 
 <div class="page-header">
@@ -157,6 +179,32 @@ $pag = $pago->fetch();
         <button onclick="toggleEdit()" class="btn btn-primary btn-sm">✏️ Editar Historia</button>
     </div>
 </div>
+
+<?php if ($h['asignada_en'] && $h['fecha_entrega'] && !in_array($h['estado'], ['pagada','revisada'], true)): ?>
+<?php
+    $color_barra = $vencida ? 'var(--error)' : ($porcentaje > 80 ? 'var(--error)' : ($porcentaje > 50 ? 'var(--warning)' : 'var(--accent)'));
+    if ($vencida) {
+        $etiqueta_tiempo = 'Plazo vencido hace ' . (new DateTime($h['fecha_entrega']))->diff(new DateTime())->days . ' días';
+    } elseif ($dias_restantes === 0) {
+        $etiqueta_tiempo = 'Vence hoy';
+    } else {
+        $etiqueta_tiempo = $dias_restantes . ' día' . ($dias_restantes === 1 ? '' : 's') . ' restante' . ($dias_restantes === 1 ? '' : 's');
+    }
+?>
+<div class="card" style="margin-bottom:1.2rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem">
+        <span style="font-size:.8rem;color:var(--muted)">Progreso del plazo · <?= $dias_transcurridos ?> de <?= $dias_total ?> días (<?= $porcentaje ?>%)</span>
+        <span style="font-size:.8rem;color:<?= $vencida ? 'var(--error)' : 'var(--text2)' ?>;font-weight:<?= $vencida ? '600' : '400' ?>"><?= e($etiqueta_tiempo) ?></span>
+    </div>
+    <div style="height:6px;background:var(--surface2);border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:<?= $porcentaje ?>%;background:<?= $color_barra ?>;border-radius:99px;transition:width .5s"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:.3rem">
+        <span>Inicio: <?= date('d/m/Y', strtotime($h['asignada_en'])) ?></span>
+        <span>Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Edit Form (hidden by default) -->
 <div id="edit-form-card" class="card" style="margin-bottom:1.2rem;display:none;border-color:var(--accent)">

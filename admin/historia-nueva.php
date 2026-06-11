@@ -25,6 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("INSERT INTO historias (categoria_id, titulo, descripcion, foco_periodistico, extension_esperada, fecha_entrega, presupuesto, monto_total_a_pagar, visible_para_todos, creada_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$categoria_id, $tit, $desc, $foco, $ext, $fecha, $presupuesto, $monto_total_a_pagar, $visible_todos, $_SESSION['usuario_id']]);
         $historia_id = $db->lastInsertId();
+        $codigo = 'cdv' . str_pad($historia_id, 3, '0', STR_PAD_LEFT);
+        $db->prepare("UPDATE historias SET codigo=? WHERE id=?")->execute([$codigo, $historia_id]);
         
         // Si no es visible para todos, guardar visibilidad selectiva
         if (!$visible_todos && !empty($periodistas_sel)) {

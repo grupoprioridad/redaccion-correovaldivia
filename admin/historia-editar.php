@@ -28,6 +28,10 @@ if (!$h) {
     exit;
 }
 
+// Adquirir lock de admin para que periodistas no editen mientras tenemos la página abierta
+$db->exec("CREATE TABLE IF NOT EXISTS historia_locks (historia_id INT NOT NULL PRIMARY KEY, admin_id INT NOT NULL, locked_at DATETIME NOT NULL)");
+$db->prepare("INSERT INTO historia_locks (historia_id, admin_id, locked_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE admin_id=VALUES(admin_id), locked_at=NOW()")->execute([$id, $_SESSION['usuario_id']]);
+
 // Acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_verify();
@@ -49,6 +53,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash('info', 'WordPress: ' . $res_wp['mensaje']);
                 } elseif ($res_wp['mensaje'] !== 'Exportación a WordPress desactivada.') {
                     flash('warning', 'WordPress: ' . $res_wp['mensaje']);
+                }
+
+                // Email al periodista con datos de facturación
+                $per = $db->prepare("SELECT nombre, email, rut, banco, tipo_cuenta, numero_cuenta FROM usuarios WHERE id = ?");
+                $per->execute([$h['periodista_asignado']]);
+                $periodista = $per->fetch();
+                if ($periodista && $periodista['email']) {
+                    $monto_b  = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
+                    $ret_b    = (int)round($monto_b * 0.1525);
+                    $liq_b    = $monto_b - $ret_b;
+                    $titSafe  = e($h['titulo']);
+                    $nomSafe  = e($periodista['nombre']);
+                    $enlace   = BASE_URL . '/periodista/subir-boleta.php?id=' . $id;
+                    $codigo_h = e($h['codigo'] ?? '');
+                    $subject_per = "Historia aprobada [{$codigo_h}] — Genera tu boleta de honorarios";
+                    $msg_per = "
+<p>Hola <strong>{$nomSafe}</strong>,</p>
+<p>¡Tu historia <strong>«{$titSafe}»</strong> fue <span style='color:#27a644;font-weight:bold'>aprobada</span>! Para procesar tu pago, necesitas generar una <strong>Boleta de Honorarios Electrónica</strong> en <a href='https://homer.sii.cl/'>SII.cl</a> y subirla a nuestra plataforma.</p>
+
+<h3 style='margin-top:1.2rem;font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#666'>Emite la boleta a nombre de</h3>
+<table style='border-collapse:collapse;font-size:14px;margin:8px 0;width:100%'>
+  <tr><td style='padding:4px 12px 4px 0;color:#888;white-space:nowrap'>Empresa</td><td style='font-weight:bold'>" . e(EMPRESA_NOMBRE) . "</td></tr>
+  " . (EMPRESA_RUT ? "<tr><td style='padding:4px 12px 4px 0;color:#888'>RUT</td><td style='font-weight:bold'>" . e(EMPRESA_RUT) . "</td></tr>" : "") . "
+  <tr><td style='padding:4px 12px 4px 0;color:#888'>Giro</td><td>" . e(EMPRESA_GIRO) . "</td></tr>
+  <tr><td style='padding:4px 12px 4px 0;color:#888'>Dirección</td><td>" . e(EMPRESA_DIRECCION) . "</td></tr>
+  <tr><td style='padding:4px 12px 4px 0;color:#888'>Concepto</td><td>Honorarios periodísticos · {$titSafe}</td></tr>
+  " . ($codigo_h ? "<tr><td style='padding:4px 12px 4px 0;color:#888'>Referencia de pago</td><td style='font-weight:bold;font-family:monospace;font-size:15px;color:#5e6ad2'>{$codigo_h}</td></tr>" : "") . "
+</table>
+
+<h3 style='margin-top:1.2rem;font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#666'>Montos</h3>
+<table style='border-collapse:collapse;font-size:14px;margin:8px 0'>
+  <tr><td style='padding:4px 12px 4px 0;color:#888'>Monto bruto (valor de la boleta)</td><td style='font-weight:bold;font-size:16px'>$" . number_format($monto_b, 0, ',', '.') . "</td></tr>
+  <tr><td style='padding:4px 12px 4px 0;color:#888'>Retención segunda categoría (15,25%)</td><td style='color:#f59e0b'>− $" . number_format($ret_b, 0, ',', '.') . "</td></tr>
+  <tr style='border-top:1px solid #eee'><td style='padding:8px 12px 4px 0;color:#888;font-weight:bold'>Líquido a recibir</td><td style='font-weight:bold;font-size:16px;color:#27a644'>$" . number_format($liq_b, 0, ',', '.') . "</td></tr>
+</table>
+<p style='font-size:12px;color:#888'>Emite la boleta por el <strong>monto bruto</strong>. La retención es calculada y declarada por nosotros ante el SII.</p>
+
+<p style='margin-top:1.4rem'>
+  <a href='{$enlace}' style='background:#5e6ad2;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block'>📤 Subir mi boleta de honorarios</a>
+</p>
+<p style='font-size:12px;color:#888;margin-top:.5rem'>O ingresa a: {$enlace}</p>
+<p style='margin-top:1.2rem'>Si tienes dudas sobre facturación escribe a <a href='mailto:" . e(EMPRESA_EMAIL_FINANZAS) . "'>" . e(EMPRESA_EMAIL_FINANZAS) . "</a>.</p>";
+                    enviarCorreo($periodista['email'], $subject_per, $msg_per);
                 }
             }
 
@@ -116,6 +163,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'subir_comprobante') {
+        $pago_row = $db->prepare("SELECT id, comprobante FROM pagos WHERE historia_id = ? ORDER BY created_at DESC LIMIT 1");
+        $pago_row->execute([$id]);
+        $pago_row = $pago_row->fetch();
+        if (!$pago_row) {
+            flash('error', 'No hay pago registrado para esta historia.');
+        } elseif ($pago_row['comprobante']) {
+            flash('error', 'Ya hay un comprobante adjunto a este pago.');
+        } elseif (empty($_FILES['comprobante']['name'])) {
+            flash('error', 'Selecciona un archivo.');
+        } else {
+            $ruta = subirComprobante($_FILES['comprobante']);
+            if ($ruta) {
+                $db->prepare("UPDATE pagos SET comprobante=? WHERE id=?")->execute([$ruta, $pago_row['id']]);
+                flash('success', 'Comprobante adjuntado al pago.');
+            } else {
+                flash('error', 'No se pudo subir el archivo. Verifica formato (PDF, JPG, PNG, WEBP) y tamaño (máx. 10 MB).');
+            }
+        }
+        header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
+        exit;
+    }
+
     if ($action === 'marcar_pagado') {
         if ($h['estado'] !== 'revisada' || !$h['periodista_asignado']) {
             flash('error', 'La historia no está en estado para pagar.');
@@ -127,14 +197,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $honorarios  = $monto_total;
         $liquido     = $monto_total - $retencion;
 
-        $db->prepare("INSERT INTO pagos (historia_id, periodista_id, monto_total, honorarios, retencion, liquido, estado, fecha_pago) VALUES (?,?,?,?,?,?,'pagado',NOW())")
-            ->execute([$id, $h['periodista_asignado'], $monto_total, $honorarios, $retencion, $liquido]);
+        $comprobante = null;
+        if (!empty($_FILES['comprobante']['name'])) {
+            $ruta = subirComprobante($_FILES['comprobante']);
+            if ($ruta) {
+                $comprobante = $ruta;
+            } else {
+                flash('warning', 'El comprobante no pudo subirse (formato o tamaño inválido). El pago fue registrado igualmente.');
+            }
+        }
+
+        $db->prepare("INSERT INTO pagos (historia_id, periodista_id, monto_total, honorarios, retencion, liquido, comprobante, estado, fecha_pago) VALUES (?,?,?,?,?,?,?,'pagado',NOW())")
+            ->execute([$id, $h['periodista_asignado'], $monto_total, $honorarios, $retencion, $liquido, $comprobante]);
         $db->prepare("UPDATE historias SET estado='pagada' WHERE id=?")->execute([$id]);
-        flash('success', 'Pago registrado.');
+
+        // Email al periodista: agradecimiento + informe de pago
+        $perPago = $db->prepare("SELECT nombre, email FROM usuarios WHERE id = ?");
+        $perPago->execute([$h['periodista_asignado']]);
+        $perData = $perPago->fetch();
+        if ($perData && $perData['email']) {
+            $titPago   = e($h['titulo']);
+            $nomPago   = e($perData['nombre']);
+            $fechaPago = date('d/m/Y');
+            $compUrl   = $comprobante ? e(urlImagen($comprobante)) : null;
+            $codigoPago = e($h['codigo'] ?? '');
+            $subject_pago = "Pago procesado [{$codigoPago}] — " . preg_replace('/[\r\n]+/', ' ', mb_substr($h['titulo'], 0, 80));
+            $msg_pago = "
+<p>Hola <strong>{$nomPago}</strong>,</p>
+<p>¡Muchas gracias por tu trabajo! Tu pago por la historia <strong>«{$titPago}»</strong> ha sido procesado exitosamente.</p>
+
+<h3 style='margin-top:1.2rem;font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:#666'>Informe de pago</h3>
+<table style='border-collapse:collapse;font-size:14px;margin:8px 0;width:100%;max-width:400px'>
+  <tr><td style='padding:5px 16px 5px 0;color:#888'>Historia</td><td style='font-weight:bold'>{$titPago}</td></tr>
+  " . ($codigoPago ? "<tr><td style='padding:5px 16px 5px 0;color:#888'>Referencia</td><td style='font-weight:bold;font-family:monospace;color:#5e6ad2'>{$codigoPago}</td></tr>" : "") . "
+  <tr><td style='padding:5px 16px 5px 0;color:#888'>Fecha de pago</td><td>{$fechaPago}</td></tr>
+  <tr style='border-top:1px solid #eee'><td style='padding:8px 16px 5px 0;color:#888'>Honorarios brutos</td><td style='font-weight:bold'>$" . number_format($monto_total, 0, ',', '.') . "</td></tr>
+  <tr><td style='padding:5px 16px 5px 0;color:#888'>Retención (15,25%)</td><td style='color:#f59e0b'>− $" . number_format($retencion, 0, ',', '.') . "</td></tr>
+  <tr style='border-top:2px solid #eee'><td style='padding:8px 16px 5px 0;font-weight:bold'>Monto líquido transferido</td><td style='font-size:18px;font-weight:bold;color:#27a644'>$" . number_format($liquido, 0, ',', '.') . "</td></tr>
+</table>
+" . ($compUrl ? "<p style='margin-top:1.2rem'><a href='{$compUrl}' style='background:#5e6ad2;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block'>📎 Ver comprobante de transferencia</a></p>" : "") . "
+<p style='margin-top:1.4rem;font-size:.85rem;color:#666'>Fue un placer trabajar contigo. Esperamos seguir contando con tus reportajes.</p>
+<p style='font-size:.85rem;color:#666'>— El equipo de <strong>" . e(SITE_NAME) . "</strong></p>";
+            enviarCorreo($perData['email'], $subject_pago, $msg_pago);
+        }
+
+        flash('success', 'Pago registrado. Se notificó al periodista por correo.');
         header('Location: ' . BASE_URL . '/admin/historia-editar?id=' . $id);
         exit;
     }
 }
+
+// Recargar historia para obtener boleta_path actualizado
+$historia->execute([$id]);
+$h = $historia->fetch();
 
 // Obtener entrega
 $entrega = $db->prepare("SELECT e.*, u.nombre AS periodista_nombre FROM entregas e JOIN usuarios u ON e.periodista_id = u.id WHERE e.historia_id = ? ORDER BY e.created_at DESC LIMIT 1");
@@ -175,13 +290,21 @@ if ($h['asignada_en'] && $h['fecha_entrega']) {
         $porcentaje = min(100, round(($dias_transcurridos / $dias_total) * 100));
     }
 }
+// Datos bancarios del periodista
+$datosPerio = null;
+if ($h['periodista_asignado']) {
+    $dp = $db->prepare("SELECT nombre, email, rut, banco, tipo_cuenta, numero_cuenta FROM usuarios WHERE id = ?");
+    $dp->execute([$h['periodista_asignado']]);
+    $datosPerio = $dp->fetch();
+}
 ?>
 
 <div class="page-header">
     <div>
         <h1><?= e($h['titulo']) ?></h1>
         <div class="subtitle">
-            Creada por <?= e($h['creador_nombre']) ?> · 
+            <span style="font-family:'Geist Mono',monospace;font-size:.85rem;background:var(--surface2);padding:.15rem .5rem;border-radius:5px;letter-spacing:.03em"><?= e($h['codigo'] ?? '—') ?></span>
+            · Creada por <?= e($h['creador_nombre']) ?> ·
             <span class="badge badge-<?= $h['estado'] ?>"><?= $h['estado'] ?></span>
         </div>
     </div>
@@ -213,6 +336,46 @@ if ($h['asignada_en'] && $h['fecha_entrega']) {
     <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:.3rem">
         <span>Inicio: <?= date('d/m/Y', strtotime($h['asignada_en'])) ?></span>
         <span>Entrega: <?= date('d/m/Y', strtotime($h['fecha_entrega'])) ?></span>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php
+// Determinar paso actual del proceso
+$paso = 1;
+if (in_array($h['estado'], ['entregada','revisada','pagada'])) $paso = 2;
+if ($h['estado'] === 'revisada' && !$h['boleta_path']) $paso = 3;
+if ($h['estado'] === 'revisada' && $h['boleta_path']) $paso = 4;
+if ($h['estado'] === 'pagada') $paso = 5;
+
+$pasos = [
+    1 => ['label' => 'Historia entregada', 'icon' => '📝'],
+    2 => ['label' => 'Aprobada por admin', 'icon' => '✅'],
+    3 => ['label' => 'Periodista sube boleta', 'icon' => '🧾'],
+    4 => ['label' => 'Admin registra pago', 'icon' => '💰'],
+];
+if (in_array($h['estado'], ['entregada','revisada','pagada'])):
+?>
+<div class="card" style="margin-bottom:1.2rem;padding:1rem 1.5rem">
+    <div style="display:flex;align-items:center;gap:0;overflow-x:auto">
+        <?php foreach ($pasos as $n => $info):
+            $done    = $paso > $n;
+            $current = $paso === $n;
+            $pending = $paso < $n;
+            $col  = $done ? '#27a644' : ($current ? '#5e6ad2' : 'var(--muted)');
+            $bg   = $done ? 'rgba(39,166,68,.12)' : ($current ? 'rgba(94,106,210,.15)' : 'transparent');
+            $bord = $done ? '2px solid #27a644' : ($current ? '2px solid #5e6ad2' : '2px solid var(--border)');
+        ?>
+        <div style="display:flex;align-items:center;gap:0;flex:1;min-width:0">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.3rem;min-width:90px;padding:.5rem .25rem;background:<?= $bg ?>;border:<?= $bord ?>;border-radius:10px">
+                <span style="font-size:1.1rem"><?= $info['icon'] ?><?= $done ? ' ✓' : '' ?></span>
+                <span style="font-size:.68rem;font-weight:<?= $current?'700':'500' ?>;color:<?= $col ?>;text-align:center;line-height:1.3"><?= $info['label'] ?></span>
+            </div>
+            <?php if ($n < 4): ?>
+            <div style="flex:1;height:2px;background:<?= $paso > $n ? '#27a644' : 'var(--border)' ?>;min-width:12px"></div>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
     </div>
 </div>
 <?php endif; ?>
@@ -354,6 +517,10 @@ function toggleEdit() {
     <div class="card">
         <div class="card-header"><h2>Detalles</h2></div>
         <div class="detail-row">
+            <span class="detail-label">Código</span>
+            <span class="detail-value" style="font-family:'Geist Mono',monospace;font-weight:700;font-size:1rem;color:var(--accent)"><?= e($h['codigo'] ?? '—') ?></span>
+        </div>
+        <div class="detail-row">
             <span class="detail-label">Descripción</span>
             <span class="detail-value"><?= nl2br(e($h['descripcion'] ?? '—')) ?></span>
         </div>
@@ -423,41 +590,137 @@ function toggleEdit() {
     
     <div>
         <?php if ($h['estado'] === 'pagada' && $pag): ?>
-        <div class="card">
-            <div class="card-header"><h2>💰 Pago</h2></div>
+        <div class="card" style="border-color:rgba(39,166,68,.3)">
+            <div class="card-header"><h2>💰 Pago registrado</h2><span class="badge badge-revisada">Completado</span></div>
             <div class="detail-row">
                 <span class="detail-label">Monto total</span>
                 <span class="detail-value">$<?= number_format($pag['monto_total'], 0, ',', '.') ?></span>
             </div>
             <div class="detail-row">
-                <span class="detail-label">Honorarios</span>
-                <span class="detail-value">$<?= number_format($pag['honorarios'], 0, ',', '.') ?></span>
-            </div>
-            <div class="detail-row">
                 <span class="detail-label">Retención</span>
-                <span class="detail-value">$<?= number_format($pag['retencion'], 0, ',', '.') ?></span>
+                <span class="detail-value" style="color:var(--warning)">$<?= number_format($pag['retencion'], 0, ',', '.') ?></span>
             </div>
             <div class="detail-row">
-                <span class="detail-label">Líquido a pagar</span>
-                <span class="detail-value" style="color:var(--success);font-weight:600">$<?= number_format($pag['liquido'], 0, ',', '.') ?></span>
+                <span class="detail-label">Líquido pagado</span>
+                <span class="detail-value" style="color:var(--success);font-weight:600;font-size:1.05rem">$<?= number_format($pag['liquido'], 0, ',', '.') ?></span>
             </div>
             <div class="detail-row">
                 <span class="detail-label">Pagado el</span>
                 <span class="detail-value"><?= date('d/m/Y', strtotime($pag['fecha_pago'])) ?></span>
             </div>
+            <!-- Boleta del periodista -->
+            <?php if ($h['boleta_path']): ?>
+            <div class="detail-row">
+                <span class="detail-label">Boleta periodista</span>
+                <span class="detail-value">
+                    <?php $ext_b = strtolower(pathinfo($h['boleta_path'], PATHINFO_EXTENSION)); ?>
+                    <a href="<?= e(urlImagen($h['boleta_path'])) ?>" target="_blank" class="btn btn-secondary btn-xs">
+                        <?= $ext_b === 'pdf' ? '📄 Ver PDF' : '🖼 Ver boleta' ?>
+                    </a>
+                    <span style="font-size:.72rem;color:var(--muted);margin-left:.5rem">subida <?= date('d/m/Y', strtotime($h['boleta_subida_en'])) ?></span>
+                </span>
+            </div>
+            <?php endif; ?>
+            <!-- Comprobante transferencia -->
+            <?php if ($pag['comprobante']): ?>
+            <div class="detail-row">
+                <span class="detail-label">Comprobante transferencia</span>
+                <span class="detail-value">
+                    <?php $comp_ext = strtolower(pathinfo($pag['comprobante'], PATHINFO_EXTENSION)); ?>
+                    <?php if ($comp_ext === 'pdf'): ?>
+                        <a href="<?= e(urlImagen($pag['comprobante'])) ?>" target="_blank" class="btn btn-secondary btn-xs">📄 Ver PDF</a>
+                    <?php else: ?>
+                        <a href="<?= e(urlImagen($pag['comprobante'])) ?>" target="_blank">
+                            <img src="<?= e(urlImagen($pag['comprobante'])) ?>" alt="Comprobante" style="max-width:100%;max-height:160px;border-radius:6px;border:1px solid var(--border);margin-top:.3rem;display:block">
+                        </a>
+                    <?php endif; ?>
+                </span>
+            </div>
+            <?php else: ?>
+            <div class="detail-row" style="justify-content:flex-end">
+                <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>" enctype="multipart/form-data" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="subir_comprobante">
+                    <input type="file" name="comprobante" accept=".pdf,.jpg,.jpeg,.png,.webp" style="font-size:.8rem" required>
+                    <button type="submit" class="btn btn-secondary btn-xs">📎 Subir comprobante</button>
+                </form>
+            </div>
+            <?php endif; ?>
         </div>
+
         <?php elseif ($h['estado'] === 'revisada' && $h['periodista_asignado']): ?>
-        <div class="card">
-            <div class="card-header"><h2>💰 Registrar Pago</h2></div>
-            <?php
-                $mt  = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
-                $ret = (int)round($mt * 0.1525);
-                $liq = $mt - $ret;
-            ?>
-            <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>">
+        <?php
+            $mt  = (int)($h['monto_total_a_pagar'] ?? $h['presupuesto']);
+            $ret = (int)round($mt * 0.1525);
+            $liq = $mt - $ret;
+            $tiene_cesion = $doc && $doc['pdf_generado'];
+            $tiene_boleta = !empty($h['boleta_path']);
+        ?>
+
+        <!-- Estado de cesión de derechos -->
+        <div class="card" style="margin-bottom:.8rem;padding:.75rem 1.2rem;border-color:<?= $tiene_cesion ? 'rgba(39,166,68,.3)' : 'rgba(239,68,68,.3)' ?>">
+            <div style="display:flex;align-items:center;gap:.6rem">
+                <span style="font-size:1.1rem"><?= $tiene_cesion ? '✅' : '⚠️' ?></span>
+                <span style="font-size:.85rem;font-weight:600;color:<?= $tiene_cesion ? 'var(--success)' : 'var(--error)' ?>">
+                    <?= $tiene_cesion ? 'Cesión de derechos firmada' : 'Sin cesión de derechos' ?>
+                </span>
+                <?php if ($tiene_cesion): ?>
+                <a href="<?= BASE_URL ?>/admin/cesion.php?id=<?= (int)$doc['id'] ?>" target="_blank" class="btn btn-secondary btn-xs" style="margin-left:auto">📄 Descargar</a>
+                <?php endif; ?>
+            </div>
+            <?php if (!$tiene_cesion): ?>
+            <p style="font-size:.75rem;color:var(--muted);margin:.3rem 0 0 1.7rem">No se puede procesar el pago sin cesión de derechos firmada.</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- Estado de boleta -->
+        <div class="card" style="margin-bottom:.8rem;padding:.75rem 1.2rem;border-color:<?= $tiene_boleta ? 'rgba(39,166,68,.3)' : 'rgba(245,158,11,.3)' ?>">
+            <div style="display:flex;align-items:center;gap:.6rem">
+                <span style="font-size:1.1rem"><?= $tiene_boleta ? '🧾' : '⏳' ?></span>
+                <span style="font-size:.85rem;font-weight:600;color:<?= $tiene_boleta ? 'var(--success)' : 'var(--warning)' ?>">
+                    <?= $tiene_boleta ? 'Boleta de honorarios recibida' : 'Esperando boleta del periodista' ?>
+                </span>
+                <?php if ($tiene_boleta): ?>
+                <?php $ext_b = strtolower(pathinfo($h['boleta_path'], PATHINFO_EXTENSION)); ?>
+                <a href="<?= e(urlImagen($h['boleta_path'])) ?>" target="_blank" class="btn btn-secondary btn-xs" style="margin-left:auto">
+                    <?= $ext_b === 'pdf' ? '📄 Ver boleta' : '🖼 Ver boleta' ?>
+                </a>
+                <?php endif; ?>
+            </div>
+            <?php if ($tiene_boleta): ?>
+            <p style="font-size:.72rem;color:var(--muted);margin:.3rem 0 0 1.7rem">Subida el <?= date('d/m/Y H:i', strtotime($h['boleta_subida_en'])) ?></p>
+            <?php else: ?>
+            <p style="font-size:.75rem;color:var(--muted);margin:.3rem 0 0 1.7rem">El periodista recibirá un recordatorio. Puedes esperar a que la suba antes de pagar.</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- Formulario pago -->
+        <div class="card" style="<?= !$tiene_cesion ? 'opacity:.6;pointer-events:none' : '' ?>">
+            <div class="card-header">
+                <h2>💰 Registrar Pago</h2>
+                <?php if (!$tiene_cesion): ?><span style="font-size:.75rem;color:var(--error)">Requiere cesión de derechos</span><?php endif; ?>
+            </div>
+
+            <!-- Datos bancarios del periodista -->
+            <?php if ($datosPerio): ?>
+            <div style="margin-bottom:1rem;padding:.8rem 1rem;background:var(--surface2);border-radius:10px">
+                <p style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.5rem">Transferir a</p>
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:.25rem .8rem;font-size:.85rem">
+                    <span style="color:var(--muted)">Nombre</span><strong><?= e($datosPerio['nombre']) ?></strong>
+                    <?php if ($datosPerio['rut']): ?><span style="color:var(--muted)">RUT</span><span><?= e($datosPerio['rut']) ?></span><?php endif; ?>
+                    <?php if ($datosPerio['banco']): ?><span style="color:var(--muted)">Banco</span><span><?= e($datosPerio['banco']) ?></span><?php endif; ?>
+                    <?php if ($datosPerio['tipo_cuenta']): ?><span style="color:var(--muted)">Cuenta</span><span><?= e($datosPerio['tipo_cuenta']) ?><?= $datosPerio['numero_cuenta'] ? ' · ' . e($datosPerio['numero_cuenta']) : '' ?></span><?php endif; ?>
+                    <?php if ($datosPerio['email']): ?><span style="color:var(--muted)">Email</span><span><?= e($datosPerio['email']) ?></span><?php endif; ?>
+                </div>
+                <?php if (!$datosPerio['banco'] && !$datosPerio['numero_cuenta']): ?>
+                <p style="font-size:.75rem;color:var(--warning);margin-top:.5rem">⚠ El periodista no ha completado sus datos bancarios en su perfil.</p>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
+            <form method="post" action="<?= BASE_URL ?>/admin/historia-editar?id=<?= $id ?>" enctype="multipart/form-data">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="marcar_pagado">
-
                 <div class="form-group">
                     <label>Monto total bruto</label>
                     <input type="text" value="$<?= number_format($mt, 0, ',', '.') ?>" disabled>
@@ -465,16 +728,22 @@ function toggleEdit() {
                 <div class="form-group">
                     <label>Retención 15,25%</label>
                     <input type="text" value="$<?= number_format($ret, 0, ',', '.') ?>" disabled style="color:var(--error)">
-                    <div class="hint">Calculada automáticamente sobre el monto total.</div>
                 </div>
                 <div class="form-group">
-                    <label>Líquido a pagar</label>
+                    <label>Líquido a transferir</label>
                     <input type="text" value="$<?= number_format($liq, 0, ',', '.') ?>" disabled style="color:var(--success);font-weight:600;font-size:1.1rem">
                 </div>
+                <div class="form-group">
+                    <label for="comprobante_file">Comprobante de transferencia <span style="font-weight:400;color:var(--muted)">(recomendado)</span></label>
+                    <input type="file" id="comprobante_file" name="comprobante" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:.4rem 0">
+                    <div class="hint">PDF o imagen del comprobante bancario, máx. 10 MB.</div>
+                </div>
                 <button type="submit" class="btn btn-success"
-                        onclick="return confirm('¿Registrar pago de $<?= number_format($liq, 0, ',', '.') ?> líquido a <?= e(addslashes($h['periodista_nombre'] ?? '')) ?>?')">
+                        onclick="return confirm('¿Registrar pago de $<?= number_format($liq, 0, ',', '.') ?> líquido a <?= e(addslashes($h['periodista_nombre'] ?? '')) ?>?')"
+                        <?= !$tiene_cesion ? 'disabled title="Requiere cesión de derechos"' : '' ?>>
                     ✓ Marcar como Pagado
                 </button>
+                <?php if (!$tiene_boleta): ?><p style="font-size:.75rem;color:var(--muted);margin-top:.5rem">La boleta del periodista aún no ha sido subida, pero puedes pagar de todas formas.</p><?php endif; ?>
             </form>
         </div>
         <?php endif; ?>

@@ -15,6 +15,14 @@ $mis_historias = $db->prepare("
 $mis_historias->execute([$user_id]);
 $mis_h = $mis_historias->fetchAll();
 
+// Cargar IDs de historias bloqueadas por admin (última actividad < 10 min)
+$historias_bloqueadas = [];
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS historia_locks (historia_id INT NOT NULL PRIMARY KEY, admin_id INT NOT NULL, locked_at DATETIME NOT NULL)");
+    $bloqRows = $db->query("SELECT historia_id FROM historia_locks WHERE locked_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)")->fetchAll(PDO::FETCH_COLUMN);
+    $historias_bloqueadas = array_flip(array_map('intval', $bloqRows));
+} catch (Throwable $e) {}
+
 $disponibles = $db->prepare("
     SELECT h.*, u.nombre AS creador_nombre, c.nombre AS categoria_nombre
     FROM historias h
@@ -79,11 +87,49 @@ function initials($str) {
         <?php foreach ($mis_h as $h): 
             $pal = gradientForId($h['id']);
         ?>
+        <?php
+            // Paso actual del flujo
+            $paso_c = 1;
+            if ($h['estado'] === 'entregada') $paso_c = 2;
+            elseif ($h['estado'] === 'revisada' && empty($h['boleta_path'])) $paso_c = 3;
+            elseif ($h['estado'] === 'revisada' && !empty($h['boleta_path'])) $paso_c = 4;
+            elseif ($h['estado'] === 'pagada') $paso_c = 5;
+            $steps_c = [1=>'Escribir',2=>'Entregada',3=>'Aprobada',4=>'Boleta',5=>'Pagada'];
+        ?>
         <div class="historia-card" data-id="<?= $h['id'] ?>">
-            <div class="hc-head" style="background:linear-gradient(135deg,<?= $pal['from'] ?>,<?= $pal['to'] ?>)">
+            <div class="hc-head" style="background:linear-gradient(135deg,<?= $pal['from'] ?>,<?= $pal['to'] ?>);padding-bottom:2.8rem">
                 <div class="hc-initials"><?= initials($h['titulo']) ?></div>
                 <div class="hc-badge-row">
                     <span class="badge badge-<?= $h['estado'] ?>"><?= str_replace('_', ' ', $h['estado']) ?></span>
+                </div>
+                <!-- Mini stepper -->
+                <div style="position:absolute;bottom:.6rem;left:1.2rem;right:1.2rem">
+                    <div style="display:flex;align-items:center">
+                    <?php for ($n = 1; $n <= 5; $n++):
+                        $done    = $paso_c > $n;
+                        $current = $paso_c === $n;
+                        $dotBg   = ($done || $current) ? 'rgba(255,255,255,<?= $done ? ".85" : "1" ?>)' : 'transparent';
+                        $dotBd   = $done ? 'rgba(255,255,255,.85)' : ($current ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,.3)');
+                        $lineBg  = $done ? 'rgba(255,255,255,.7)' : 'rgba(255,255,255,.2)';
+                        $labelCol = $done ? 'rgba(255,255,255,.75)' : ($current ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,.35)');
+                    ?>
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
+                            <div style="width:11px;height:11px;border-radius:50%;
+                                        background:<?= ($done||$current)?'rgba(255,255,255,'.($done?.75:1).')':'transparent' ?>;
+                                        border:1.5px solid <?= $dotBd ?>;
+                                        <?= $current ? 'box-shadow:0 0 0 3px rgba(255,255,255,.25)' : '' ?>;
+                                        display:flex;align-items:center;justify-content:center">
+                                <?php if ($done): ?>
+                                <svg width="6" height="6" viewBox="0 0 24 24" fill="none" stroke="<?= $pal['from'] ?>" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                <?php endif; ?>
+                            </div>
+                            <span style="font-size:.48rem;color:<?= $labelCol ?>;font-weight:<?= $current?'700':'400' ?>;white-space:nowrap;line-height:1"><?= $steps_c[$n] ?></span>
+                        </div>
+                        <?php if ($n < 5): ?>
+                        <div style="flex:1;height:1.5px;background:<?= $lineBg ?>;margin-bottom:11px;min-width:4px"></div>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+                    </div>
                 </div>
             </div>
             <div class="hc-body">
@@ -137,6 +183,12 @@ function initials($str) {
                     <a href="<?= BASE_URL ?>/periodista/historia.php?id=<?= $h['id'] ?>" class="hc-btn hc-btn-primary">Ver detalle</a>
                     <?php if (in_array($h['estado'], ['asignada','en_curso'])): ?>
                     <a href="<?= BASE_URL ?>/periodista/entregar.php?id=<?= $h['id'] ?>" class="hc-btn hc-btn-accent" style="background:<?= $pal['from'] ?>">Entregar</a>
+                    <?php elseif ($h['estado'] === 'entregada'): ?>
+                    <?php if (!isset($historias_bloqueadas[(int)$h['id']])): ?>
+                    <a href="<?= BASE_URL ?>/periodista/entregar.php?id=<?= $h['id'] ?>" class="hc-btn hc-btn-accent" style="background:#5e6ad2">✏️ Editar</a>
+                    <?php else: ?>
+                    <span class="hc-btn" style="opacity:.55;cursor:not-allowed;background:var(--surface2)" title="El administrador tiene esta historia abierta">🔒 En revisión</span>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>

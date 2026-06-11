@@ -6,7 +6,7 @@ function getSiteDB(): PDO {
     static $pdo;
     if (!$pdo) {
         $pdo = new PDO(
-            'mysql:host=db.prioridad.cl;dbname=elcorreodevaldivia;charset=utf8mb4',
+            'mysql:host=170.187.205.201;dbname=elcorreodevaldivia;charset=utf8mb4',
             'elcorreo_user', ',e~vm!RAXdX3JKNf',
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
         );

@@ -62,13 +62,103 @@ $pag = $pago->fetch();
         <?php if (in_array($h['estado'], ['asignada','en_curso'])): ?>
         <a href="<?= BASE_URL ?>/periodista/entregar.php?id=<?= $id ?>" class="btn btn-primary btn-sm">📝 Entregar</a>
         <?php endif; ?>
+        <?php if ($h['estado'] === 'entregada'): ?>
+        <?php
+            $lockCheck = null;
+            try {
+                $db->exec("CREATE TABLE IF NOT EXISTS historia_locks (historia_id INT NOT NULL PRIMARY KEY, admin_id INT NOT NULL, locked_at DATETIME NOT NULL)");
+                $lkStmt = $db->prepare("SELECT 1 FROM historia_locks WHERE historia_id = ? AND locked_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)");
+                $lkStmt->execute([$id]);
+                $lockCheck = $lkStmt->fetchColumn();
+            } catch (Throwable $e) {}
+        ?>
+        <?php if (!$lockCheck): ?>
+        <a href="<?= BASE_URL ?>/periodista/entregar.php?id=<?= $id ?>" class="btn btn-primary btn-sm">✏️ Editar entrega</a>
+        <?php else: ?>
+        <span class="btn btn-secondary btn-sm" style="opacity:.6;cursor:not-allowed" title="El administrador tiene esta historia abierta">🔒 En revisión</span>
+        <?php endif; ?>
+        <?php endif; ?>
+        <?php if ($h['estado'] === 'revisada' && empty($ent['boleta_path'] ?? null)): ?>
+        <?php
+            // Verificar boleta en historia (puede no estar en $ent)
+            $boletaCheck = $db->prepare("SELECT boleta_path FROM historias WHERE id=?");
+            $boletaCheck->execute([$id]);
+            $bchk = $boletaCheck->fetch();
+        ?>
+        <?php if (empty($bchk['boleta_path'])): ?>
+        <a href="<?= BASE_URL ?>/periodista/subir-boleta.php?id=<?= $id ?>" class="btn btn-primary btn-sm">🧾 Subir boleta</a>
+        <?php endif; ?>
+        <?php endif; ?>
     </div>
 </div>
+
+<?php
+// Recargar datos de boleta desde historias
+$hBoleta = $db->prepare("SELECT boleta_path, boleta_subida_en FROM historias WHERE id=?");
+$hBoleta->execute([$id]);
+$hB = $hBoleta->fetch();
+$h['boleta_path']      = $hB['boleta_path'] ?? null;
+$h['boleta_subida_en'] = $hB['boleta_subida_en'] ?? null;
+?>
+
+<?php if (in_array($h['estado'], ['entregada','revisada','pagada'])): ?>
+<?php
+$paso_p = 1;
+if (in_array($h['estado'], ['entregada','revisada','pagada'])) $paso_p = 2;
+if ($h['estado'] === 'revisada' && !$h['boleta_path']) $paso_p = 3;
+if ($h['estado'] === 'revisada' && $h['boleta_path']) $paso_p = 4;
+if ($h['estado'] === 'pagada') $paso_p = 5;
+
+$pasos_p = [
+    1 => ['label' => 'Historia entregada', 'icon' => '📝'],
+    2 => ['label' => 'Aprobada', 'icon' => '✅'],
+    3 => ['label' => 'Sube tu boleta', 'icon' => '🧾'],
+    4 => ['label' => 'Boleta enviada', 'icon' => '🧾'],
+];
+?>
+<div class="card" style="margin-bottom:1.2rem;padding:1rem 1.5rem">
+    <div style="display:flex;align-items:center;gap:0;overflow-x:auto">
+        <?php foreach ($pasos_p as $n => $info):
+            $done    = $paso_p > $n;
+            $current = $paso_p === $n;
+            $col  = $done ? '#27a644' : ($current ? '#5e6ad2' : 'var(--muted)');
+            $bg   = $done ? 'rgba(39,166,68,.12)' : ($current ? 'rgba(94,106,210,.15)' : 'transparent');
+            $bord = $done ? '2px solid #27a644' : ($current ? '2px solid #5e6ad2' : '2px solid var(--border)');
+        ?>
+        <div style="display:flex;align-items:center;gap:0;flex:1;min-width:0">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.3rem;min-width:90px;padding:.5rem .25rem;background:<?= $bg ?>;border:<?= $bord ?>;border-radius:10px">
+                <span style="font-size:1.1rem"><?= $info['icon'] ?><?= $done ? ' ✓' : '' ?></span>
+                <span style="font-size:.68rem;font-weight:<?= $current?'700':'500' ?>;color:<?= $col ?>;text-align:center;line-height:1.3"><?= $info['label'] ?></span>
+            </div>
+            <?php if ($n < 4): ?>
+            <div style="flex:1;height:2px;background:<?= $paso_p > $n ? '#27a644' : 'var(--border)' ?>;min-width:12px"></div>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php if ($paso_p === 3): ?>
+    <p style="text-align:center;margin-top:.75rem;font-size:.82rem;color:var(--accent)">
+        Tu historia fue aprobada. <a href="<?= BASE_URL ?>/periodista/subir-boleta.php?id=<?= $id ?>" style="font-weight:700">Genera tu boleta de honorarios y súbela aquí →</a>
+    </p>
+    <?php elseif ($paso_p === 4): ?>
+    <p style="text-align:center;margin-top:.75rem;font-size:.82rem">
+        <span style="color:var(--success);font-weight:600">✅ Boleta recibida por el equipo administrativo.</span><br>
+        <span style="color:var(--muted)">En espera de confirmación de pago. Te avisaremos por correo cuando sea procesado.</span>
+    </p>
+    <?php elseif ($paso_p === 5 || $h['estado'] === 'pagada'): ?>
+    <p style="text-align:center;margin-top:.75rem;font-size:.82rem;color:var(--success);font-weight:600">¡Proceso completado! Recibirás o ya recibiste el pago.</p>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
     <div class="card">
         <div class="card-header"><h2>📋 Detalles</h2></div>
+        <div class="detail-row">
+            <span class="detail-label">Código</span>
+            <span class="detail-value" style="font-family:monospace;font-weight:700;font-size:.95rem;color:var(--accent)"><?= e($h['codigo'] ?? '—') ?></span>
+        </div>
         <div class="detail-row">
             <span class="detail-label">Descripción</span>
             <span class="detail-value"><?= nl2br(e($h['descripcion'] ?? '—')) ?></span>
@@ -130,8 +220,31 @@ $pag = $pago->fetch();
         <div class="detail-row">
             <span class="detail-label">💵 Pago</span>
             <span class="detail-value" style="color:var(--success)">
-                $<?= number_format($pag['liquido'], 0, ',', '.') ?> líquido · 
+                $<?= number_format($pag['liquido'], 0, ',', '.') ?> líquido ·
                 <?= date('d/m/Y', strtotime($pag['fecha_pago'])) ?>
+            </span>
+        </div>
+        <?php if ($pag['comprobante']): ?>
+        <div class="detail-row">
+            <span class="detail-label">Comprobante</span>
+            <span class="detail-value">
+                <?php $cext = strtolower(pathinfo($pag['comprobante'], PATHINFO_EXTENSION)); ?>
+                <a href="<?= e(urlImagen($pag['comprobante'])) ?>" target="_blank" class="btn btn-secondary btn-xs">
+                    <?= $cext === 'pdf' ? '📄 Ver PDF' : '🖼 Ver comprobante' ?>
+                </a>
+            </span>
+        </div>
+        <?php endif; ?>
+        <?php endif; ?>
+        <?php if ($h['boleta_path']): ?>
+        <div class="detail-row">
+            <span class="detail-label">Tu boleta</span>
+            <span class="detail-value">
+                <?php $bext = strtolower(pathinfo($h['boleta_path'], PATHINFO_EXTENSION)); ?>
+                <a href="<?= e(urlImagen($h['boleta_path'])) ?>" target="_blank" class="btn btn-secondary btn-xs">
+                    <?= $bext === 'pdf' ? '📄 Ver PDF' : '🖼 Ver boleta' ?>
+                </a>
+                <span style="font-size:.72rem;color:var(--muted);margin-left:.5rem">subida <?= date('d/m/Y', strtotime($h['boleta_subida_en'])) ?></span>
             </span>
         </div>
         <?php endif; ?>

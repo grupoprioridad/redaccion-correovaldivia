@@ -59,6 +59,9 @@ $user = usuarioActual();
             <a href="<?= BASE_URL ?>/admin/enviar-articulo.php" class="<?= $current === 'enviar-articulo.php' ? 'active' : '' ?>">
                 ✉ <span>Enviar artículo</span>
             </a>
+            <a href="<?= BASE_URL ?>/admin/redaccion-rapida.php" class="<?= $current === 'redaccion-rapida.php' ? 'active' : '' ?>">
+                ⚡ <span>Redacción Rápida</span>
+            </a>
         </nav>
         <div class="user-info">
             <div class="name"><?= e($user['nombre']) ?></div>

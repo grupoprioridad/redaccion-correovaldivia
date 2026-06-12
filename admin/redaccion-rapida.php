@@ -230,13 +230,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['accion_ia'])) {
 
         <div class="card" style="margin-bottom:1rem">
             <div class="card-header">
-                <h2>Vista previa HTML</h2>
-                <div style="display:flex;gap:.4rem">
-                    <span style="font-size:.75rem;color:var(--muted)">El contenido formateado que se enviará a WP</span>
+                <h2>HTML final</h2>
+                <div style="display:flex;gap:.4rem;align-items:center">
+                    <button type="button" class="btn btn-secondary btn-xs" onclick="togglePreview()" id="btn-preview">👁️ Vista previa</button>
+                    <button type="button" class="btn btn-secondary btn-xs ia-btn" data-accion="formatear">🔧 Auto-formatear</button>
                 </div>
             </div>
-            <textarea name="html_generado" id="campo-html" class="form-control code" rows="10"
-                      placeholder="Aquí aparecerá el HTML generado... Usa los botones IA para formatear."><?= e($_POST['html_generado'] ?? '') ?></textarea>
+            <div id="html-editor-wrap">
+                <textarea name="html_generado" id="campo-html" class="form-control code" rows="10"
+                          placeholder="HTML del artículo. Usa el botón 🔧 Auto-formatear para generarlo desde el texto plano."><?= e($_POST['html_generado'] ?? '') ?></textarea>
+            </div>
+            <div id="html-preview-wrap" style="display:none">
+                <div id="html-preview" style="padding:1.5rem;font-family:Georgia,'Times New Roman',serif;font-size:1.1rem;line-height:1.9;color:#d4d4d8;background:#0d0e10;border-radius:8px;border:1px solid rgba(255,255,255,.06);min-height:200px"></div>
+                <div style="margin-top:.6rem;font-size:.6rem;color:var(--muted);font-family:'Geist',sans-serif;display:flex;gap:1rem;flex-wrap:wrap">
+                    <span>📱 Vista previa aproximada del artículo en WordPress</span>
+                    <span class="preview-close" style="cursor:pointer;color:var(--accent)" onclick="togglePreview()">← Volver al HTML</span>
+                </div>
+            </div>
         </div>
 
         <div class="card">
@@ -366,6 +376,28 @@ document.querySelectorAll('.ia-btn').forEach(btn => {
         }
     });
 });
+
+function togglePreview() {
+    const editor = document.getElementById('html-editor-wrap');
+    const preview = document.getElementById('html-preview-wrap');
+    const btn = document.getElementById('btn-preview');
+    const html = document.getElementById('campo-html').value;
+    if (preview.style.display === 'none') {
+        updatePreview();
+        editor.style.display = 'none';
+        preview.style.display = 'block';
+        btn.textContent = '✏️ Editar HTML';
+    } else {
+        preview.style.display = 'none';
+        editor.style.display = 'block';
+        btn.textContent = '👁️ Vista previa';
+    }
+}
+function updatePreview() {
+    const html = document.getElementById('campo-html').value;
+    document.getElementById('html-preview').innerHTML = html;
+}
+document.getElementById('campo-html').addEventListener('input', updatePreview);
 </script>
 
 <?php require_once __DIR__ . '/footer.php'; ?>

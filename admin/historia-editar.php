@@ -759,6 +759,7 @@ function toggleEdit() {
                 <input type="hidden" name="action" value="revisar">
                 <div style="margin-bottom:.8rem">
                     <a href="#" onclick="verEntrega(event, <?= $id ?>)" class="btn btn-secondary btn-sm">📖 Ver contenido</a>
+                    <a href="<?= BASE_URL ?>/admin/lectura.php?id=<?= (int)$ent['id'] ?>" class="btn btn-secondary btn-sm" target="_blank">📱 Lectura</a>
                     <?php if ($doc && $doc['pdf_generado']): ?>
                     <a href="<?= BASE_URL ?>/admin/cesion.php?id=<?= (int)$doc['id'] ?>" target="_blank" class="btn btn-secondary btn-sm">📄 Ver cesión</a>
                     <?php endif; ?>
@@ -784,7 +785,10 @@ function toggleEdit() {
 <div class="card" style="margin-top:1.2rem" id="contenido-<?= $id ?>">
     <div class="card-header">
         <h2>📖 Contenido Entregado</h2>
-        <span class="badge badge-<?= $ent['estado'] ?>"><?= $ent['estado'] ?></span>
+        <div style="display:flex;align-items:center;gap:.5rem">
+            <span class="badge badge-<?= $ent['estado'] ?>"><?= $ent['estado'] ?></span>
+            <a href="<?= BASE_URL ?>/admin/lectura.php?id=<?= (int)$ent['id'] ?>" class="btn btn-secondary btn-xs" target="_blank">📱 Lectura</a>
+        </div>
     </div>
     <div style="line-height:1.8;font-size:.95rem;color:var(--text2)">
         <?= sanitizarHTMLEntrega($ent['contenido'] ?? '') ?>

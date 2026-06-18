@@ -3,3 +3,7 @@ uploads/*
 !uploads/.gitkeep
 .DS_Store
 *.log
+
+# Dumps / backups de base de datos
+*.sql
+dump-*.sql

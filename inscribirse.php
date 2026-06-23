@@ -65,6 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reenv
     exit;
 }
 
+// ── CAPTCHA: generar pregunta matemática en carga inicial ──
+if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    $_SESSION['captcha_q1']     = rand(2, 9);
+    $_SESSION['captcha_q2']     = rand(1, 9);
+    $_SESSION['captcha_answer'] = $_SESSION['captcha_q1'] + $_SESSION['captcha_q2'];
+    $_SESSION['form_loaded_at'] = time();
+}
+
 // ── Paso 1: Formulario de inscripción ──
 if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'inscribir') {
     csrf_verify();
@@ -90,6 +98,36 @@ if ($modo === 'formulario' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['
     $acepto_terminos = isset($_POST['acepto_terminos']) ? 1 : 0;
 
     $errores = [];
+
+    // ── Anti-spam: honeypot ──
+    if (!empty($_POST['website'])) {
+        error_log('Spam honeypot triggered from IP: ' . clientIp());
+        $errores[] = 'Se detectó un problema con el envío. Recarga la página.';
+    }
+
+    // ── Anti-spam: timing (mínimo 3 segundos desde carga del formulario) ──
+    $elapsed = time() - (int)($_SESSION['form_loaded_at'] ?? 0);
+    if ($elapsed < 3) {
+        $errores[] = 'Formulario enviado demasiado rápido. Espera un momento e intenta de nuevo.';
+    }
+
+    // ── Anti-spam: CAPTCHA matemático ──
+    $captcha_enviado  = (int)trim($_POST['captcha'] ?? '');
+    $captcha_correcto = isset($_SESSION['captcha_answer']) ? (int)$_SESSION['captcha_answer'] : -999;
+    if ($captcha_enviado !== $captcha_correcto || $captcha_correcto === -999) {
+        $errores[] = 'Respuesta de verificación incorrecta.';
+    }
+
+    // Regenerar CAPTCHA para el siguiente intento (evita reutilización)
+    $_SESSION['captcha_q1']     = rand(2, 9);
+    $_SESSION['captcha_q2']     = rand(1, 9);
+    $_SESSION['captcha_answer'] = $_SESSION['captcha_q1'] + $_SESSION['captcha_q2'];
+    $_SESSION['form_loaded_at'] = time();
+
+    if (!empty($errores)) {
+        $error_msg = implode('<br>', array_map('e', $errores));
+        goto fin_form;
+    }
 
     if (empty($nombre)) $errores[] = 'El nombre es obligatorio.';
     if (mb_strlen($nombre) > 120) $errores[] = 'El nombre es demasiado largo.';
@@ -177,6 +215,9 @@ if (isset($_GET['codigo'])) {
 .codigo-input input{text-align:center;font-size:1.8rem;font-family:'Geist Mono',monospace;letter-spacing:10px;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);width:100%;outline:none;transition:all .25s}
 .codigo-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 .btn[disabled]{opacity:.7;cursor:wait;transform:none!important;box-shadow:none!important}
+.hp-field{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;opacity:0}
+.captcha-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.captcha-row input{max-width:130px}
 .btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:btn-spin .7s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes btn-spin{to{transform:rotate(360deg)}}
 </style>
@@ -250,6 +291,9 @@ if (isset($_GET['codigo'])) {
     <form method="post">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="inscribir">
+        <div class="hp-field" aria-hidden="true">
+            <input type="text" name="website" id="website" tabindex="-1" autocomplete="off" value="">
+        </div>
         
         <div class="form-section">
             <h3>📋 Datos personales</h3>
@@ -348,6 +392,18 @@ if (isset($_GET['codigo'])) {
             </span>
         </label>
         
+        <div class="form-group" style="margin-bottom:1.5rem">
+            <label for="captcha" style="font-size:.85rem;font-weight:600">
+                Verificación: ¿Cuánto es
+                <span style="color:var(--accent);font-family:'Geist Mono',monospace">
+                    <?= (int)($_SESSION['captcha_q1'] ?? 0) ?> + <?= (int)($_SESSION['captcha_q2'] ?? 0) ?>
+                </span>? *
+            </label>
+            <div class="captcha-row">
+                <input type="number" id="captcha" name="captcha" required placeholder="Resultado" min="0" max="18">
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:.8rem;font-size:.95rem">
             ✍️ Enviar inscripción
         </button>

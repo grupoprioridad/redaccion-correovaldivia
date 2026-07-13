@@ -7,3 +7,7 @@ uploads/*
 # Dumps / backups de base de datos
 *.sql
 dump-*.sql
+
+# Copias de respaldo (pueden contener credenciales)
+*.bak
+*.bak-*

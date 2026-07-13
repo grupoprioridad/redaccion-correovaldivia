@@ -2,17 +2,7 @@
 $titulo = 'Suscriptores';
 require_once __DIR__ . '/header.php';
 
-function getSiteDB(): PDO {
-    static $pdo;
-    if (!$pdo) {
-        $pdo = new PDO(
-            'mysql:host=db.prioridad.cl;dbname=elcorreodevaldivia;charset=utf8mb4',
-            'elcorreo_user', ',e~vm!RAXdX3JKNf',
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-        );
-    }
-    return $pdo;
-}
+// getSiteDB() se define en includes/config.php
 $site = getSiteDB();
 
 // ── Exportar CSV ─────────────────────────────────────────────────────────────

@@ -4,10 +4,7 @@ require_once __DIR__ . '/header.php';
 require_once ROOT_PATH . '/includes/smtp.php';
 
 // ── Conexiones ────────────────────────────────────────────────────────────────
-function getSiteDB(): PDO {
-    static $p; if (!$p) $p = new PDO('mysql:host=db.prioridad.cl;dbname=elcorreodevaldivia;charset=utf8mb4','elcorreo_user',',e~vm!RAXdX3JKNf',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
-    return $p;
-}
+// getSiteDB() se define en includes/config.php
 
 // ── Fetch posts WP REST API ───────────────────────────────────────────────────
 function wpPosts(): array {

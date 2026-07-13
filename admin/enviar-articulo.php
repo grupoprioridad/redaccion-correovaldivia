@@ -18,12 +18,28 @@ function wpPosts(): array {
 }
 
 // ── Construir email HTML del artículo ────────────────────────────────────────
-function buildEmail(array $post, string $modo, string $destinatario): string {
+function buildEmail(array $post, string $modo, array $sus): string {
+    $destinatario  = (string)($sus['correo'] ?? '');
+    $nombre_sus    = trim((string)($sus['nombre'] ?? ''));
+    $primer_nombre = $nombre_sus !== '' ? explode(' ', $nombre_sus)[0] : '';
+    $baja_url      = 'https://www.elcorreodevaldivia.cl/baja.php?t=' . rawurlencode((string)($sus['token'] ?? ''));
+
     $titulo  = html_entity_decode(strip_tags($post['title']['rendered'] ?? ''), ENT_QUOTES, 'UTF-8');
     $excerpt = strip_tags($post['excerpt']['rendered'] ?? '');
     $link    = $post['link'] ?? '';
     $img_url = $post['_embedded']['wp:featuredmedia'][0]['source_url'] ?? '';
     $cat     = $post['_embedded']['wp:term'][0][0]['name'] ?? '';
+
+    // Saludo de apertura (personalizado con el nombre del suscriptor)
+    $saludo_block = '<p style="color:#c8ccd4;line-height:1.7;font-size:1rem;margin:0 0 .6rem;font-weight:600">'
+        . ($primer_nombre !== '' ? 'Hola ' . htmlspecialchars($primer_nombre, ENT_QUOTES, 'UTF-8') . ' 👋' : 'Hola 👋')
+        . '</p>'
+        . '<p style="color:#a0a4ab;line-height:1.7;font-size:.9rem;margin:0 0 1.6rem">Te compartimos una nueva historia de <strong style="color:#c8ccd4">El Correo de Valdivia</strong>:</p>';
+
+    // Cierre / despedida
+    $cierre_block = '<p style="color:#a0a4ab;line-height:1.7;font-size:.88rem;margin:1.6rem 0 0;padding-top:1.2rem;border-top:1px solid rgba(255,255,255,0.06)">'
+        . 'Gracias por acompañarnos. Seguimos haciendo periodismo local, profundo y a tu ritmo.<br>'
+        . '<span style="color:#c8ccd4;font-weight:600">— Equipo de El Correo de Valdivia</span></p>';
 
     if ($modo === 'completo') {
         $cuerpo = $post['content']['rendered'] ?? '';
@@ -58,6 +74,7 @@ function buildEmail(array $post, string $modo, string $destinatario): string {
          style="max-width:520px;background:#111214;border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
     ' . $img_block . '
     <tr><td style="padding:2rem 2rem 1.5rem">
+      ' . $saludo_block . '
       ' . $cat_block . '
       <h1 style="font-family:Inter,system-ui,sans-serif;font-size:1.4rem;font-weight:700;letter-spacing:-.4px;color:#f7f8f8;margin:0 0 1.2rem;line-height:1.25">' . htmlspecialchars($titulo) . '</h1>
       <div style="margin-bottom:1.5rem">' . $cuerpo . '</div>
@@ -68,17 +85,18 @@ function buildEmail(array $post, string $modo, string $destinatario): string {
           </a>
         </td></tr>
       </table>
+      ' . $cierre_block . '
     </td></tr>
     <tr><td style="padding:.8rem 2rem 1.4rem;border-top:1px solid rgba(255,255,255,0.05)">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td><span style="font-family:monospace;font-size:.56rem;text-transform:uppercase;letter-spacing:2px;color:#2a2d33">El Correo de Valdivia · Inversiones Grupo Prioridad SpA</span></td>
+          <td><span style="font-family:monospace;font-size:.56rem;text-transform:uppercase;letter-spacing:2px;color:#2a2d33">El Correo de Valdivia · Metanoia TV SpA</span></td>
         </tr>
         <tr><td style="padding-top:.5rem">
           <span style="font-family:monospace;font-size:.54rem;color:#2a2d33">
-            Recibiste este correo porque te suscribiste a El Correo de Valdivia.
-            <a href="mailto:lobito@elcorreodevaldivia.cl?subject=Desuscribirse%20-%20El%20Correo%20de%20Valdivia&body=Por%20favor%20elimina%20mi%20suscripci%C3%B3n%3A%20' . rawurlencode($destinatario) . '"
-               style="color:#3a3d44;text-decoration:underline">Desuscribirse</a>
+            Recibiste este correo porque te suscribiste a El Correo de Valdivia.<br>
+            <a href="' . htmlspecialchars($baja_url) . '"
+               style="color:#5e6ad2;text-decoration:underline">No quiero recibir las alertas de noticia</a>
           </span>
         </td></tr>
       </table>
@@ -93,7 +111,19 @@ function buildEmail(array $post, string $modo, string $destinatario): string {
 // ── Cargar datos ──────────────────────────────────────────────────────────────
 $site    = getSiteDB();
 $posts   = wpPosts();
-$todos_s = $site->query("SELECT id, nombre, correo FROM suscriptores ORDER BY nombre ASC")->fetchAll();
+$todos_s = $site->query("SELECT id, nombre, correo, token FROM suscriptores WHERE activo = 1 ORDER BY nombre ASC")->fetchAll();
+
+// Asegurar un token único de baja para cada suscriptor que aún no lo tenga
+if (array_filter($todos_s, fn($s) => empty($s['token']))) {
+    $updTok = $site->prepare("UPDATE suscriptores SET token = ? WHERE id = ?");
+    foreach ($todos_s as &$s) {
+        if (empty($s['token'])) {
+            $s['token'] = bin2hex(random_bytes(16));
+            $updTok->execute([$s['token'], $s['id']]);
+        }
+    }
+    unset($s);
+}
 
 // IDs preseleccionados (desde suscriptores.php con multi-select)
 $presel_ids = array_filter(array_map('intval', explode(',', $_GET['ids'] ?? '')));
@@ -151,12 +181,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $total_dest    = count($destinatarios);
 
     foreach ($destinatarios as $idx => $s) {
-        $html = buildEmail($post_sel, $modo, $s['correo']);
+        $html = buildEmail($post_sel, $modo, $s);
         try {
             $ok = enviarEmailMarketing(
                 $s['correo'],
                 'El Correo de Valdivia: ' . $titulo_art,
-                $html
+                $html,
+                '',
+                'https://www.elcorreodevaldivia.cl/baja.php?t=' . rawurlencode((string)($s['token'] ?? ''))
             );
             $resultados[] = ['nombre' => $s['nombre'], 'correo' => $s['correo'], 'ok' => $ok];
         } catch (Throwable $e) {

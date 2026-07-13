@@ -6,11 +6,17 @@
  * No subir config.php a git (está en .gitignore).
  */
 
-// DB
+// DB (redacción)
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'TU_BASE_DE_DATOS');
 define('DB_USER', 'TU_USUARIO_DB');
 define('DB_PASS', 'TU_PASSWORD_DB');
+
+// DB del sitio público (suscriptores, denuncias, etc.)
+define('SITE_DB_HOST', 'TU_HOST_SITIO');
+define('SITE_DB_NAME', 'TU_BASE_DE_DATOS_SITIO');
+define('SITE_DB_USER', 'TU_USUARIO_DB_SITIO');
+define('SITE_DB_PASS', 'TU_PASSWORD_DB_SITIO');
 
 // URLs
 define('BASE_URL', 'https://j.prioridad.cl/redaccion');

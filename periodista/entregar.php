@@ -94,8 +94,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }));
 
         if ($modo_edicion && $entrega_existente) {
-            // Actualizar entrega existente
-            $db->prepare("UPDATE entregas SET contenido=?, imagenes=? WHERE id=?")->execute([$contenido, json_encode($imagenes), $entrega_existente['id']]);
+            // Actualizar entrega existente. Reseteamos el estado a 'pendiente_revision'
+            // para que una re-entrega tras un rechazo vuelva a la cola de revisión;
+            // de lo contrario la entrega queda 'rechazado' y la aprobación posterior
+            // (que solo toca filas 'pendiente_revision') no la marca como aprobada,
+            // impidiendo la exportación a WordPress.
+            $db->prepare("UPDATE entregas SET contenido=?, imagenes=?, estado='pendiente_revision', notas_revision=NULL WHERE id=?")->execute([$contenido, json_encode($imagenes), $entrega_existente['id']]);
 
             try {
                 $db->prepare("DELETE FROM borradores WHERE historia_id=? AND periodista_id=?")->execute([$id, $user_id]);

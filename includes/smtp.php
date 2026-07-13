@@ -20,7 +20,7 @@ use PHPMailer\PHPMailer\Exception;
  * @param  string $altBody   Versión texto plano (opcional, se genera auto si vacío)
  * @return bool
  */
-function enviarEmailMarketing(string $to, string $subject, string $htmlBody, string $altBody = ''): bool {
+function enviarEmailMarketing(string $to, string $subject, string $htmlBody, string $altBody = '', string $unsubUrl = ''): bool {
     try {
         $mail = new PHPMailer(true);
         $mail->isSMTP();
@@ -39,7 +39,7 @@ function enviarEmailMarketing(string $to, string $subject, string $htmlBody, str
 
         // Headers anti-spam
         $unsub_mail = 'mailto:' . SMTP_FROM . '?subject=' . rawurlencode('Desuscribirse - El Correo de Valdivia');
-        $unsub_url  = 'https://www.elcorreodevaldivia.cl/?desuscribir=1&correo=' . rawurlencode($to);
+        $unsub_url  = $unsubUrl !== '' ? $unsubUrl : 'https://www.elcorreodevaldivia.cl/?desuscribir=1&correo=' . rawurlencode($to);
         $mail->addCustomHeader('List-Unsubscribe', "<$unsub_mail>, <$unsub_url>");
         $mail->addCustomHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
         $mail->addCustomHeader('Precedence', 'bulk');
